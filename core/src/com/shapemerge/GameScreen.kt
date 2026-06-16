@@ -150,7 +150,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
         // Spawn just above the divider so the shot enters the playground cleanly.
         val spawnX = launcher.x
-        val spawnY = Constants.LAUNCH_ZONE_TOP + Constants.radiusForLevel(currentAmmo) + 0.1f
+        val spawnY = Constants.LAUNCH_ZONE_TOP + Constants.radiusForLevel(currentAmmo) + 0.04f
         val shape = ShapeFactory.create(world, currentAmmo, spawnX, spawnY)
         shapes.add(shape)
 
@@ -369,9 +369,9 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
     private fun drawLauncherAndAim() {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
-        // Visual radius for the launcher preview is capped so big ammo still fits
-        // the launch zone; the thrown shape uses its true (larger) size.
-        val ammoRadius = min(Constants.radiusForLevel(currentAmmo), 1.0f)
+        // Visual radius for the launcher preview is capped so the pad always fits
+        // below the divider; the thrown shape uses its true size.
+        val ammoRadius = min(Constants.radiusForLevel(currentAmmo), 0.62f)
         // Launcher pad sized to the current ammo.
         shapeRenderer.color = Color(0.80f, 0.82f, 0.88f, 1f)
         shapeRenderer.circle(launcher.x, launcher.y, ammoRadius + 0.22f, 28)
@@ -442,10 +442,9 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         batch.begin()
         font.color = Color.WHITE
 
-        // Place readouts just below the divider line (in the launch zone).
-        val dividerHud = Constants.LAUNCH_ZONE_TOP / Constants.WORLD_HEIGHT * Constants.HUD_HEIGHT
-        val row1 = dividerHud - 26f
-        val row2 = dividerHud - 72f
+        // Readouts sit at the bottom of the launch zone, clear of the launcher.
+        val row1 = 100f
+        val row2 = 54f
 
         font.data.setScale(1.6f)
         // Left: score + best.
@@ -455,11 +454,11 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         font.draw(batch, "Level $level", 0f, row1, Constants.HUD_WIDTH - 20f, Align.right, false)
         font.draw(batch, "Target $scoreTarget", 0f, row2, Constants.HUD_WIDTH - 20f, Align.right, false)
 
-        // "NEXT" label above the next-shape preview.
+        // "NEXT" label below the next-shape preview.
         val nextHudX = Constants.NEXT_X / Constants.WORLD_WIDTH * Constants.HUD_WIDTH
         val nextHudY = Constants.NEXT_Y / Constants.WORLD_HEIGHT * Constants.HUD_HEIGHT
         font.data.setScale(1.1f)
-        font.draw(batch, "NEXT", nextHudX - 36f, nextHudY + 56f)
+        font.draw(batch, "NEXT", nextHudX - 36f, nextHudY - 52f)
 
         drawPopScores()
 

@@ -11,16 +11,17 @@ object Constants {
     const val HUD_WIDTH = 720f
     const val HUD_HEIGHT = 1280f
 
-    // Launcher anchor (sits well above the bottom edge for comfortable dragging).
+    // Launcher anchor — placed just below the divider so thrown shapes appear to
+    // emerge from it (the spawn point is right above the divider line).
     const val LAUNCH_X = WORLD_WIDTH / 2f
-    const val LAUNCH_Y = 2.4f
+    const val LAUNCH_Y = 3.6f
 
     // Horizontal divider separating the launch zone (below) from the playground (above).
     const val LAUNCH_ZONE_TOP = 4.6f
 
     // Position of the "next shape" preview, in the launch zone left of the launcher.
-    const val NEXT_X = 2.6f
-    const val NEXT_Y = 2.3f
+    const val NEXT_X = 1.3f
+    const val NEXT_Y = 3.6f
 
     // Polygon ladder: triangle (3 sides) .. decagon (10 sides).
     // Merging two decagons (or a multi-merge that reaches CIRCLE_LEVEL) forms a
@@ -29,12 +30,12 @@ object Constants {
     const val MAX_LEVEL = 10
     const val CIRCLE_LEVEL = 11
 
-    // Shapes grow with each polygon (triangle small, square bigger, ...), but the
-    // growth tapers and is capped: radius grows linearly while AREA grows with the
-    // square, so without a cap the top shapes explode in size and fill the board.
+    // Largest shapes are capped so at least 3 fit across the playground.
+    // Fit rule: 2 * N * maxRadius <= WORLD_WIDTH  ->  maxRadius = WORLD_WIDTH / (2N).
+    // With WORLD_WIDTH=9, MAX_RADIUS=0.9 lets ~5 fit across (comfortably >= 3).
     const val BASE_RADIUS = 0.55f
     const val RADIUS_STEP = 0.18f
-    const val MAX_RADIUS = 1.05f
+    const val MAX_RADIUS = 0.9f
 
     fun radiusForLevel(level: Int): Float {
         val lvl = level.coerceIn(MIN_LEVEL, MAX_LEVEL)
