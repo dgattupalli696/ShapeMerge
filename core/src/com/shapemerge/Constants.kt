@@ -27,14 +27,15 @@ object Constants {
     // Merging two decagons (or a multi-merge that reaches CIRCLE_LEVEL) forms a
     // circle that pops for bonus points and disappears.
     const val MIN_LEVEL = 3
-    const val MAX_LEVEL = 8
-    const val CIRCLE_LEVEL = 9
+    const val MAX_LEVEL = 10
+    const val CIRCLE_LEVEL = 11
 
     // Marker for the one-way divider fixture (shots pass up through it).
     const val DIVIDER = "divider"
 
-    // Shapes grow gently from triangle (3) to octagon (8, the largest polygon).
-    // Step kept small so adjacent shapes differ modestly; octagon reaches MAX_RADIUS.
+    // Ladder runs triangle (3) to decagon (10). Size grows per step but is capped
+    // at MAX_RADIUS, which octagon (level 8) reaches exactly: 0.55 + 5*0.08 = 0.95.
+    // So octagon, nonagon and decagon share the same (max) size, just more sides.
     const val BASE_RADIUS = 0.55f
     const val RADIUS_STEP = 0.08f
     const val MAX_RADIUS = 0.95f
