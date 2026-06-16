@@ -4,7 +4,7 @@ A physics-based merge game for Android, built with **libGDX + Box2D** (Kotlin).
 
 Aim an arrow from the launcher and fling polygons into a walled playground. When
 two (or more) shapes of the **same kind** collide they merge into the next polygon
-in the ladder — triangle → square → pentagon → … → decagon. Merge two decagons (or
+in the ladder — triangle → square → pentagon → … → octagon. Merge two octagons (or
 a multi-shape cluster) and they form a **circle** that pops for a big bonus and
 disappears. Fill the playground and it's game over.
 
@@ -15,7 +15,7 @@ disappears. Fill the playground and it's game over.
   cone so shots always go into the playground.
 - **Merging:** Same shapes that collide merge up one level. Three or more colliding
   at once jump multiple levels (e.g. 3 triangles → pentagon).
-- **Polygon ladder:** triangle (3) up to decagon (10), then a circle (pops).
+- **Polygon ladder:** triangle (3) up to octagon (8), then a circle (pops).
 - **Scoring:** Higher merges score more; circles award a large bonus with a pop
   effect and floating score. High score is saved locally.
 - **Levels:** Reaching the score target advances the level and yields larger

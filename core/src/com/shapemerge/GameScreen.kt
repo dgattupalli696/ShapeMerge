@@ -107,9 +107,10 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         edge.set(0f, h, w, h); body.createFixture(fixtureDef)          // top
         edge.set(0f, 0f, 0f, h); body.createFixture(fixtureDef)        // left
         edge.set(w, 0f, w, h); body.createFixture(fixtureDef)          // right
-        // Divider sealing the playground off from the launch zone.
+        // One-way divider: shots pass up from the launch zone into the playground,
+        // but playground shapes can't fall back down through it.
         edge.set(0f, Constants.LAUNCH_ZONE_TOP, w, Constants.LAUNCH_ZONE_TOP)
-        body.createFixture(fixtureDef)
+        body.createFixture(fixtureDef).userData = Constants.DIVIDER
         edge.dispose()
     }
 
@@ -148,13 +149,15 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         val power = computeAim()
         if (power <= 0f) return
 
-        // Spawn just above the divider so the shot enters the playground cleanly.
+        // Spawn at the launcher so the shot travels exactly along the aim arrow.
+        // The one-way divider lets it pass up into the playground.
         val spawnX = launcher.x
-        val spawnY = Constants.LAUNCH_ZONE_TOP + Constants.radiusForLevel(currentAmmo) + 0.04f
+        val spawnY = launcher.y
         val shape = ShapeFactory.create(world, currentAmmo, spawnX, spawnY)
         shapes.add(shape)
 
-        val impulse = power * Constants.IMPULSE_SCALE
+        val impulse = power * Constants.IMPULSE_SCALE *
+            (Constants.radiusForLevel(currentAmmo) / Constants.BASE_RADIUS)
         shape.body.applyLinearImpulse(
             aimDir.x * impulse, aimDir.y * impulse,
             spawnX, spawnY, true

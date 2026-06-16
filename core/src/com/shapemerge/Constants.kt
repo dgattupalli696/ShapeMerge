@@ -27,15 +27,17 @@ object Constants {
     // Merging two decagons (or a multi-merge that reaches CIRCLE_LEVEL) forms a
     // circle that pops for bonus points and disappears.
     const val MIN_LEVEL = 3
-    const val MAX_LEVEL = 10
-    const val CIRCLE_LEVEL = 11
+    const val MAX_LEVEL = 8
+    const val CIRCLE_LEVEL = 9
 
-    // Largest shapes are capped so at least 3 fit across the playground.
-    // Fit rule: 2 * N * maxRadius <= WORLD_WIDTH  ->  maxRadius = WORLD_WIDTH / (2N).
-    // With WORLD_WIDTH=9, MAX_RADIUS=0.9 lets ~5 fit across (comfortably >= 3).
+    // Marker for the one-way divider fixture (shots pass up through it).
+    const val DIVIDER = "divider"
+
+    // Shapes grow gently from triangle (3) to octagon (8, the largest polygon).
+    // Step kept small so adjacent shapes differ modestly; octagon reaches MAX_RADIUS.
     const val BASE_RADIUS = 0.55f
-    const val RADIUS_STEP = 0.18f
-    const val MAX_RADIUS = 0.9f
+    const val RADIUS_STEP = 0.08f
+    const val MAX_RADIUS = 0.95f
 
     fun radiusForLevel(level: Int): Float {
         val lvl = level.coerceIn(MIN_LEVEL, MAX_LEVEL)

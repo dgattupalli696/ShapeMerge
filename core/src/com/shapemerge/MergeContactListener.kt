@@ -26,6 +26,24 @@ class MergeContactListener(
     }
 
     override fun endContact(contact: Contact) {}
-    override fun preSolve(contact: Contact, oldManifold: Manifold?) {}
+
+    override fun preSolve(contact: Contact, oldManifold: Manifold?) {
+        val fa = contact.fixtureA
+        val fb = contact.fixtureB
+        val dividerIsA = fa.userData == Constants.DIVIDER
+        val dividerIsB = fb.userData == Constants.DIVIDER
+        if (!dividerIsA && !dividerIsB) return
+        val shapeBody = (if (dividerIsA) fb else fa).body
+        if (shapeBody.userData is ShapeEntity) {
+            // One-way: a freshly launched shape (below the divider, moving up) passes
+            // through; everything else collides so playground shapes stay above it.
+            if (shapeBody.position.y < Constants.LAUNCH_ZONE_TOP &&
+                shapeBody.linearVelocity.y > 0f
+            ) {
+                contact.isEnabled = false
+            }
+        }
+    }
+
     override fun postSolve(contact: Contact, impulse: ContactImpulse?) {}
 }
