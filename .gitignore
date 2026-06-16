@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+*/build/
+
+# Android / SDK config (machine-specific)
+local.properties
+
+# Signing secrets
+keystore.properties
+*.jks
+*.keystore
+
+# Generated native libs (extracted at build time)
+android/libs/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Misc
+*.png
+!docs/**/*.png
+*.apk
+*.aab
