@@ -150,7 +150,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
         // Spawn just above the divider so the shot enters the playground cleanly.
         val spawnX = launcher.x
-        val spawnY = Constants.LAUNCH_ZONE_TOP + Constants.SHAPE_RADIUS + 0.1f
+        val spawnY = Constants.LAUNCH_ZONE_TOP + Constants.radiusForLevel(currentAmmo) + 0.1f
         val shape = ShapeFactory.create(world, currentAmmo, spawnX, spawnY)
         shapes.add(shape)
 
@@ -369,12 +369,15 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
     private fun drawLauncherAndAim() {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
-        // Launcher pad.
+        // Visual radius for the launcher preview is capped so big ammo still fits
+        // the launch zone; the thrown shape uses its true (larger) size.
+        val ammoRadius = min(Constants.radiusForLevel(currentAmmo), 1.0f)
+        // Launcher pad sized to the current ammo.
         shapeRenderer.color = Color(0.80f, 0.82f, 0.88f, 1f)
-        shapeRenderer.circle(launcher.x, launcher.y, Constants.SHAPE_RADIUS + 0.22f, 28)
-        // Current ammo drawn as its actual polygon shape (true size).
+        shapeRenderer.circle(launcher.x, launcher.y, ammoRadius + 0.22f, 28)
+        // Current ammo drawn as its actual polygon shape.
         shapeRenderer.color = Constants.colorForLevel(currentAmmo)
-        drawPolygonAt(launcher.x, launcher.y, currentAmmo, Constants.SHAPE_RADIUS, previewSpin)
+        drawPolygonAt(launcher.x, launcher.y, currentAmmo, ammoRadius, previewSpin)
         // Next ammo preview (smaller) as its actual polygon shape.
         shapeRenderer.color = Color(0.55f, 0.57f, 0.63f, 1f)
         shapeRenderer.circle(Constants.NEXT_X, Constants.NEXT_Y, 0.5f, 24)

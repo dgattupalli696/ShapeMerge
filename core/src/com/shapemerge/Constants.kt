@@ -29,7 +29,13 @@ object Constants {
     const val MAX_LEVEL = 10
     const val CIRCLE_LEVEL = 11
 
-    const val SHAPE_RADIUS = 0.62f
+    // Shapes grow noticeably with each polygon (triangle small, square bigger,
+    // pentagon bigger, ...) so merges expand footprint and the board fills faster.
+    const val BASE_RADIUS = 0.55f
+    const val RADIUS_STEP = 0.28f
+
+    fun radiusForLevel(level: Int): Float =
+        BASE_RADIUS + (level.coerceIn(MIN_LEVEL, MAX_LEVEL) - MIN_LEVEL) * RADIUS_STEP
     const val SHAPE_DENSITY = 1f
     const val SHAPE_FRICTION = 0.25f
     const val SHAPE_RESTITUTION = 0.45f

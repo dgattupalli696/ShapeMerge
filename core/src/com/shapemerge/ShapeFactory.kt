@@ -27,7 +27,7 @@ object ShapeFactory {
         level: Int,
         x: Float,
         y: Float,
-        radius: Float = Constants.SHAPE_RADIUS
+        radius: Float = Constants.radiusForLevel(level)
     ): ShapeEntity {
         val bodyDef = BodyDef().apply {
             type = BodyDef.BodyType.DynamicBody
