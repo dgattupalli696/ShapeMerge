@@ -19,7 +19,8 @@ class MergeContactListener(
         val b = contact.fixtureB.body.userData
         if (a is ShapeEntity && b is ShapeEntity &&
             a !== b && !a.removed && !b.removed &&
-            a.level == b.level
+            a.level == b.level &&
+            !(a.mergeGroup != 0 && a.mergeGroup == b.mergeGroup)
         ) {
             onSameLevelContact(a, b)
         }

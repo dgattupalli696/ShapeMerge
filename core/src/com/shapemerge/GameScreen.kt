@@ -49,6 +49,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     // Active power-up projectiles (bomb, cannonball) tracked for special behavior.
     private class Projectile(val kind: AmmoKind, val body: Body) {
         var life = 0f
+        val hit = HashSet<ShapeEntity>() // shapes already knocked (cannonball)
     }
     private val projectiles = ArrayList<Projectile>()
 
@@ -205,14 +206,19 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
     /** Launches a normal polygon shape of [shapeLevel] along the aim arrow. */
     private fun fireShape(shapeLevel: Int, power: Float) {
-        fireShapeInDir(shapeLevel, aimDir.x, aimDir.y, power)
+        fireShapeInDir(shapeLevel, aimDir.x, aimDir.y, power, launcher.x, launcher.y)
     }
 
-    private fun fireShapeInDir(shapeLevel: Int, dx: Float, dy: Float, power: Float) {
+    private fun fireShapeInDir(
+        shapeLevel: Int,
+        dx: Float,
+        dy: Float,
+        power: Float,
+        spawnX: Float,
+        spawnY: Float
+    ): ShapeEntity {
         // Spawn at the launcher so the shot travels exactly along the aim arrow.
         // The one-way divider lets it pass up into the playground.
-        val spawnX = launcher.x
-        val spawnY = launcher.y
         val shape = ShapeFactory.create(world, shapeLevel, spawnX, spawnY)
         shapes.add(shape)
 
@@ -220,14 +226,31 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             (Constants.radiusForLevel(shapeLevel) / Constants.BASE_RADIUS)
         shape.body.applyLinearImpulse(dx * impulse, dy * impulse, spawnX, spawnY, true)
         shape.body.angularVelocity = MathUtils.random(-3f, 3f)
+        return shape
     }
 
-    /** Three small shapes in a spread. */
+    private var nextMergeGroup = 1
+
+    /** Three small shapes in a spread that won't merge with each other. */
     private fun fireMultiball(power: Float) {
         val baseAngle = atan2(aimDir.x, aimDir.y)
-        for (off in floatArrayOf(-0.22f, 0f, 0.22f)) {
-            val a = baseAngle + off
-            fireShapeInDir(Constants.MIN_LEVEL, sin(a), cos(a), power * 0.95f)
+        // Perpendicular to the aim direction, to separate the three spawn points.
+        val perpX = -aimDir.y
+        val perpY = aimDir.x
+        val spacing = Constants.radiusForLevel(Constants.MIN_LEVEL) * 2.2f
+        val group = nextMergeGroup++
+        val offsets = floatArrayOf(-0.3f, 0f, 0.3f)
+        for (i in offsets.indices) {
+            val a = baseAngle + offsets[i]
+            val lateral = (i - 1) * spacing
+            val s = fireShapeInDir(
+                Constants.MIN_LEVEL,
+                sin(a), cos(a),
+                power * 0.95f,
+                launcher.x + perpX * lateral,
+                launcher.y + perpY * lateral
+            )
+            s.mergeGroup = group
         }
     }
 
@@ -260,12 +283,12 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         projectiles.add(Projectile(AmmoKind.BOMB, body))
     }
 
-    /** A heavy cannonball that physically smashes through a cluster. */
+    /** A fast cannonball that plows straight through, flinging shapes aside. */
     private fun fireCannonball(power: Float) {
-        val body = spawnProjectileBody(Constants.CANNON_RADIUS, sensor = false, density = 9f)
-        val impulse = power * Constants.IMPULSE_SCALE * 4.5f
-        body.applyLinearImpulse(aimDir.x * impulse, aimDir.y * impulse, launcher.x, launcher.y, true)
-        body.angularVelocity = MathUtils.random(-2f, 2f)
+        val body = spawnProjectileBody(Constants.CANNON_RADIUS, sensor = true, density = 1f)
+        body.linearDamping = 0f
+        val speed = 13f + power * 1.6f
+        body.setLinearVelocity(aimDir.x * speed, aimDir.y * speed)
         projectiles.add(Projectile(AmmoKind.CANNONBALL, body))
     }
 
@@ -456,8 +479,29 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
                     }
                 }
                 AmmoKind.CANNONBALL -> {
-                    if (p.life >= Constants.CANNON_LIFE) {
-                        val pos = p.body.position
+                    val pos = p.body.position
+                    val vel = p.body.linearVelocity
+                    val vlen = vel.len().coerceAtLeast(0.0001f)
+                    val fx2 = vel.x / vlen
+                    val fy2 = vel.y / vlen
+                    // Fling any shape it passes through (once each), keeping its own speed.
+                    for (s in shapes) {
+                        if (s in p.hit) continue
+                        val sx = s.body.position.x
+                        val sy = s.body.position.y
+                        val d = Vector2.dst(pos.x, pos.y, sx, sy)
+                        if (d < Constants.CANNON_RADIUS + s.radius + 0.1f) {
+                            val nx = if (d > 0.0001f) (sx - pos.x) / d else 0f
+                            val ny = if (d > 0.0001f) (sy - pos.y) / d else 1f
+                            val dvx = fx2 * 8f + nx * 4f
+                            val dvy = fy2 * 8f + ny * 4f
+                            val m = s.body.mass
+                            s.body.applyLinearImpulse(dvx * m, dvy * m, sx, sy, true)
+                            particles.burst(sx, sy, 7, Constants.colorForLevel(s.level), 4f, 0.11f)
+                            p.hit.add(s)
+                        }
+                    }
+                    if (p.life >= Constants.CANNON_LIFE || pos.y > Constants.WORLD_HEIGHT - 0.4f) {
                         confettiColor.set(0.7f, 0.7f, 0.78f, 1f)
                         particles.burst(pos.x, pos.y, 14, confettiColor, 4f, 0.12f)
                         world.destroyBody(p.body)
