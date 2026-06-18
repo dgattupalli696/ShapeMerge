@@ -77,8 +77,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private var scoreTarget = Constants.BASE_TARGET
     private var highScore = prefs.getInteger("highScore", 0)
 
-    private var currentAmmo = randomAmmoLevel()
-    private var nextAmmo = randomAmmoLevel()
+    private var currentAmmo: Ammo = randomAmmo()
+    private var nextAmmo: Ammo = randomAmmo()
 
     private var aiming = false
     private var previewSpin = 0f
@@ -101,6 +101,9 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
     private fun randomAmmoLevel(): Int =
         MathUtils.random(Constants.MIN_LEVEL, ammoMaxLevel())
+
+    /** Produces the next ammo. Power-up kinds are mixed in by later features. */
+    private fun randomAmmo(): Ammo = Ammo(AmmoKind.SHAPE, randomAmmoLevel())
 
     private fun buildWorld() {
         world = World(Vector2(0f, 0f), true)
@@ -142,8 +145,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         score = 0
         level = 1
         scoreTarget = Constants.BASE_TARGET
-        currentAmmo = randomAmmoLevel()
-        nextAmmo = randomAmmoLevel()
+        currentAmmo = randomAmmo()
+        nextAmmo = randomAmmo()
         aiming = false
         state = State.PLAYING
     }
@@ -169,25 +172,35 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         val power = computeAim()
         if (power <= 0f) return
 
+        when (currentAmmo.kind) {
+            AmmoKind.SHAPE -> fireShape(currentAmmo.level, power)
+            AmmoKind.BOMB -> fireShape(currentAmmo.level, power)
+            AmmoKind.CANNONBALL -> fireShape(currentAmmo.level, power)
+            AmmoKind.MULTIBALL -> fireShape(currentAmmo.level, power)
+        }
+        sounds.playThrow()
+        haptics.vibrate(8)
+
+        currentAmmo = nextAmmo
+        nextAmmo = randomAmmo()
+    }
+
+    /** Launches a normal polygon shape of [shapeLevel] along the aim arrow. */
+    private fun fireShape(shapeLevel: Int, power: Float) {
         // Spawn at the launcher so the shot travels exactly along the aim arrow.
         // The one-way divider lets it pass up into the playground.
         val spawnX = launcher.x
         val spawnY = launcher.y
-        val shape = ShapeFactory.create(world, currentAmmo, spawnX, spawnY)
+        val shape = ShapeFactory.create(world, shapeLevel, spawnX, spawnY)
         shapes.add(shape)
 
         val impulse = power * Constants.IMPULSE_SCALE *
-            (Constants.radiusForLevel(currentAmmo) / Constants.BASE_RADIUS)
+            (Constants.radiusForLevel(shapeLevel) / Constants.BASE_RADIUS)
         shape.body.applyLinearImpulse(
             aimDir.x * impulse, aimDir.y * impulse,
             spawnX, spawnY, true
         )
         shape.body.angularVelocity = MathUtils.random(-3f, 3f)
-        sounds.playThrow()
-        haptics.vibrate(8)
-
-        currentAmmo = nextAmmo
-        nextAmmo = randomAmmoLevel()
     }
 
     private fun processMerges() {
@@ -457,23 +470,36 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
         // Visual radius for the launcher preview is capped so the pad always fits
         // below the divider; the thrown shape uses its true size.
-        val ammoRadius = min(Constants.radiusForLevel(currentAmmo), 0.62f)
+        val ammoRadius = min(Constants.radiusForLevel(currentAmmo.level), 0.62f)
         // Launcher pad sized to the current ammo.
         shapeRenderer.color = Color(0.80f, 0.82f, 0.88f, 1f)
         shapeRenderer.circle(launcher.x, launcher.y, ammoRadius + 0.22f, 28)
-        // Current ammo drawn as its actual polygon shape.
-        shapeRenderer.color = Constants.colorForLevel(currentAmmo)
-        drawPolygonAt(launcher.x, launcher.y, currentAmmo, ammoRadius, previewSpin)
-        // Next ammo preview (smaller) as its actual polygon shape.
+        // Current ammo icon.
+        drawAmmoIcon(currentAmmo, launcher.x, launcher.y, ammoRadius)
+        // Next ammo preview (smaller).
         shapeRenderer.color = Color(0.55f, 0.57f, 0.63f, 1f)
         shapeRenderer.circle(Constants.NEXT_X, Constants.NEXT_Y, 0.5f, 24)
-        shapeRenderer.color = Constants.colorForLevel(nextAmmo)
-        drawPolygonAt(Constants.NEXT_X, Constants.NEXT_Y, nextAmmo, 0.4f, previewSpin)
+        drawAmmoIcon(nextAmmo, Constants.NEXT_X, Constants.NEXT_Y, 0.4f)
         shapeRenderer.end()
 
         if (state == State.PLAYING && aiming) {
             val power = computeAim()
             if (power > 0f) drawAimArrow(power)
+        }
+    }
+
+    /** Draws an ammo's icon. Must be called inside a Filled batch. */
+    private fun drawAmmoIcon(ammo: Ammo, x: Float, y: Float, radius: Float) {
+        when (ammo.kind) {
+            AmmoKind.SHAPE -> {
+                shapeRenderer.color = Constants.colorForLevel(ammo.level)
+                drawPolygonAt(x, y, ammo.level, radius, previewSpin)
+            }
+            else -> {
+                // Placeholder; power-up kinds get distinct icons when added.
+                shapeRenderer.color = Color(0.9f, 0.9f, 0.95f, 1f)
+                shapeRenderer.circle(x, y, radius * 0.8f, 20)
+            }
         }
     }
 
