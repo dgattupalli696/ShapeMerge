@@ -287,7 +287,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private fun fireCannonball(power: Float) {
         val body = spawnProjectileBody(Constants.CANNON_RADIUS, sensor = true, density = 1f)
         body.linearDamping = 0f
-        val speed = 13f + power * 1.6f
+        val speed = 17f + power * 1.8f
         body.setLinearVelocity(aimDir.x * speed, aimDir.y * speed)
         projectiles.add(Projectile(AmmoKind.CANNONBALL, body))
     }
@@ -493,11 +493,12 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
                         if (d < Constants.CANNON_RADIUS + s.radius + 0.1f) {
                             val nx = if (d > 0.0001f) (sx - pos.x) / d else 0f
                             val ny = if (d > 0.0001f) (sy - pos.y) / d else 1f
-                            val dvx = fx2 * 8f + nx * 4f
-                            val dvy = fy2 * 8f + ny * 4f
+                            val dvx = fx2 * 16f + nx * 8f
+                            val dvy = fy2 * 16f + ny * 8f
                             val m = s.body.mass
                             s.body.applyLinearImpulse(dvx * m, dvy * m, sx, sy, true)
-                            particles.burst(sx, sy, 7, Constants.colorForLevel(s.level), 4f, 0.11f)
+                            s.body.angularVelocity = MathUtils.random(-6f, 6f)
+                            particles.burst(sx, sy, 9, Constants.colorForLevel(s.level), 5.5f, 0.12f)
                             p.hit.add(s)
                         }
                     }
