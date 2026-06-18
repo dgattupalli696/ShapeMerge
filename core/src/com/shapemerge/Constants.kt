@@ -64,7 +64,7 @@ object Constants {
     const val POWERUP_CHANCE = 0.16f      // chance a given ammo is a power-up
     const val BOMB_BLAST_RADIUS = 2.2f
     const val BOMB_LIFE = 3.0f
-    const val CANNON_LIFE = 1.8f
+    const val CANNON_LIFE = 3.0f
     const val CANNON_RADIUS = 0.7f
 
     // Max tilt of the aim away from straight up (radians). ~62 degrees keeps the

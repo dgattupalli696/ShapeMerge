@@ -287,7 +287,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private fun fireCannonball(power: Float) {
         val body = spawnProjectileBody(Constants.CANNON_RADIUS, sensor = true, density = 1f)
         body.linearDamping = 0f
-        val speed = 17f + power * 1.8f
+        val speed = 10f + power * 1.1f
         body.setLinearVelocity(aimDir.x * speed, aimDir.y * speed)
         projectiles.add(Projectile(AmmoKind.CANNONBALL, body))
     }
