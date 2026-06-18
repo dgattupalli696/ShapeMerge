@@ -53,6 +53,9 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     }
     private val projectiles = ArrayList<Projectile>()
 
+    // Power-ups earned from combos, queued to load as the next ammo.
+    private val pendingPowerUps = ArrayDeque<Ammo>()
+
     // Transient floating effects: circle-pop rings + floating score/combo text.
     private class Pop(
         val x: Float,
@@ -83,6 +86,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private var score = 0
     private var level = 1
     private var scoreTarget = Constants.BASE_TARGET
+    private var nextMilestone = Constants.SCORE_MILESTONES.first()
     private var highScore = prefs.getInteger("highScore", 0)
 
     private var currentAmmo: Ammo = randomAmmo()
@@ -110,17 +114,17 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private fun randomAmmoLevel(): Int =
         MathUtils.random(Constants.MIN_LEVEL, ammoMaxLevel())
 
-    /** Produces the next ammo, occasionally a power-up. */
+    /**
+     * Produces the next ammo. Earned combo power-ups (cannonball/bomb) take
+     * priority; otherwise a normal shape, with an occasional random multi-ball.
+     */
     private fun randomAmmo(): Ammo =
-        if (MathUtils.random() < Constants.POWERUP_CHANCE) {
-            when (MathUtils.random(2)) {
-                0 -> Ammo(AmmoKind.BOMB)
-                1 -> Ammo(AmmoKind.CANNONBALL)
-                else -> Ammo(AmmoKind.MULTIBALL)
+        pendingPowerUps.removeFirstOrNull()
+            ?: if (MathUtils.random() < Constants.MULTIBALL_CHANCE) {
+                Ammo(AmmoKind.MULTIBALL)
+            } else {
+                Ammo(AmmoKind.SHAPE, randomAmmoLevel())
             }
-        } else {
-            Ammo(AmmoKind.SHAPE, randomAmmoLevel())
-        }
 
     private fun buildWorld() {
         world = World(Vector2(0f, 0f), true)
@@ -161,9 +165,11 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         particles.clear()
         combo = 0
         comboTimer = 0f
+        pendingPowerUps.clear()
         score = 0
         level = 1
         scoreTarget = Constants.BASE_TARGET
+        nextMilestone = Constants.SCORE_MILESTONES.first()
         currentAmmo = randomAmmo()
         nextAmmo = randomAmmo()
         aiming = false
@@ -387,6 +393,21 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         if (combo >= 2) {
             pops.add(Pop(cx, cy + 0.7f, comboLabel(combo), false, comboColor(combo)))
         }
+
+        // Combo rewards: power-ups are earned by chaining, not random drops.
+        when (combo) {
+            3 -> awardPowerUp(AmmoKind.CANNONBALL, cx, cy)
+            4 -> awardPowerUp(AmmoKind.BOMB, cx, cy)
+        }
+    }
+
+    /** Queues a power-up as upcoming ammo and announces it. */
+    private fun awardPowerUp(kind: AmmoKind, x: Float, y: Float) {
+        pendingPowerUps.add(Ammo(kind))
+        val label = if (kind == AmmoKind.CANNONBALL) "CANNON!" else "BOMB!"
+        pops.add(Pop(x, y + 1.4f, label, false, Color(0.6f, 0.85f, 1f, 1f)))
+        fx.shake(0.12f, 0.2f)
+        haptics.vibrate(22)
     }
 
     private fun comboLabel(c: Int): String = when {
@@ -401,6 +422,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     }
 
     private fun addScore(points: Int) {
+        val before = score
         score += points
         if (score > highScore) {
             highScore = score
@@ -411,6 +433,32 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             level++
             scoreTarget += Constants.BASE_TARGET + level * 250
         }
+        checkScoreMilestone(before, score)
+    }
+
+    /** Awards a random power-up each time the score crosses a milestone. */
+    private fun checkScoreMilestone(before: Int, after: Int) {
+        if (after <= nextMilestone) return
+        while (after > nextMilestone) {
+            // Award a random power-up at the launcher height.
+            val kind = when (MathUtils.random(2)) {
+                0 -> AmmoKind.CANNONBALL
+                1 -> AmmoKind.BOMB
+                else -> AmmoKind.MULTIBALL
+            }
+            pendingPowerUps.add(Ammo(kind))
+            pops.add(Pop(Constants.WORLD_WIDTH / 2f, Constants.WORLD_HEIGHT * 0.6f,
+                "MILESTONE!", false, Color(0.6f, 0.85f, 1f, 1f)))
+            fx.shake(0.14f, 0.25f)
+            haptics.vibrate(26)
+            nextMilestone = nextMilestoneAfter(nextMilestone)
+        }
+    }
+
+    /** Next milestone: walk the fixed list, then keep multiplying by 10. */
+    private fun nextMilestoneAfter(current: Int): Int {
+        for (m in Constants.SCORE_MILESTONES) if (m > current) return m
+        return current * 10
     }
 
     private fun checkGameOver() {
