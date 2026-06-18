@@ -53,6 +53,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private val popColor = Color()
     private val popDuration = 1.2f
 
+    private val fx = Effects()
+
     private val prefs = Gdx.app.getPreferences("shapemerge")
 
     private var state = State.START
@@ -231,11 +233,17 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             val bonus = 2000 + base * 100
             addScore(bonus)
             pops.add(Pop(cx, cy, "+$bonus"))
+            // Big juice: strong shake, slow-mo, and a zoom punch.
+            fx.shake(0.32f, 0.45f)
+            fx.slowMo(0.35f, 0.7f)
+            fx.zoomPunch(0.12f, 0.55f)
         } else {
             val merged = ShapeFactory.create(world, newLevel, cx, cy)
             merged.body.linearVelocity = Vector2(sumVX / count, sumVY / count)
             shapes.add(merged)
             addScore(newLevel * newLevel * 5)
+            // Small shake that grows with the merged shape's size.
+            fx.shake(0.05f + (newLevel - Constants.MIN_LEVEL) * 0.018f, 0.16f)
         }
     }
 
@@ -263,9 +271,11 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     }
 
     override fun render(delta: Float) {
-        previewSpin += delta * 0.6f
-        updatePops(delta)
-        update(delta)
+        fx.update(delta)
+        val scaled = delta * fx.timeScale
+        previewSpin += scaled * 0.6f
+        updatePops(scaled)
+        update(scaled)
         draw()
     }
 
@@ -291,6 +301,14 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
         viewport.apply()
+        // Apply screen shake + zoom punch to the world camera.
+        camera.zoom = fx.cameraZoom
+        camera.position.set(
+            Constants.WORLD_WIDTH / 2f + fx.shakeOffset.x,
+            Constants.WORLD_HEIGHT / 2f + fx.shakeOffset.y,
+            0f
+        )
+        camera.update()
         shapeRenderer.projectionMatrix = camera.combined
 
         drawBoardBackground()
