@@ -56,6 +56,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private val fx = Effects()
     private val particles = Particles()
     private val confettiColor = Color()
+    private val sounds = Sounds()
+    private val haptics = game.haptics
 
     private val prefs = Gdx.app.getPreferences("shapemerge")
 
@@ -80,6 +82,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
     init {
         buildWorld()
+        sounds.load()
         Gdx.input.inputProcessor = InputHandler()
     }
 
@@ -168,6 +171,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             spawnX, spawnY, true
         )
         shape.body.angularVelocity = MathUtils.random(-3f, 3f)
+        sounds.playThrow()
+        haptics.vibrate(8)
 
         currentAmmo = nextAmmo
         nextAmmo = randomAmmoLevel()
@@ -243,6 +248,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             // Confetti burst.
             confettiColor.set(1f, 0.95f, 0.4f, 1f)
             particles.burst(cx, cy, 60, confettiColor, 7f, 0.18f)
+            sounds.playPop()
+            haptics.vibrate(45)
         } else {
             val merged = ShapeFactory.create(world, newLevel, cx, cy)
             merged.body.linearVelocity = Vector2(sumVX / count, sumVY / count)
@@ -252,6 +259,9 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             fx.shake(0.05f + (newLevel - Constants.MIN_LEVEL) * 0.018f, 0.16f)
             // Merge burst in the merged shape's color.
             particles.burst(cx, cy, 12 + newLevel * 2, Constants.colorForLevel(newLevel), 4.5f, 0.13f)
+            // Pitch rises with the resulting shape level.
+            sounds.playMerge(0.8f + (newLevel - Constants.MIN_LEVEL) * 0.12f)
+            haptics.vibrate(14)
         }
     }
 
@@ -584,5 +594,6 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         batch.dispose()
         font.dispose()
         debugRenderer.dispose()
+        sounds.dispose()
     }
 }

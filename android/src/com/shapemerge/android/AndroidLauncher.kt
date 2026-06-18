@@ -13,6 +13,6 @@ class AndroidLauncher : AndroidApplication() {
             useAccelerometer = false
             useCompass = false
         }
-        initialize(ShapeMergeGame(), config)
+        initialize(ShapeMergeGame(AndroidHaptics(this)), config)
     }
 }
