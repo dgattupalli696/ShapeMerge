@@ -33,15 +33,11 @@ class MergeContactListener(
         val dividerIsA = fa.userData == Constants.DIVIDER
         val dividerIsB = fb.userData == Constants.DIVIDER
         if (!dividerIsA && !dividerIsB) return
-        val shapeBody = (if (dividerIsA) fb else fa).body
-        if (shapeBody.userData is ShapeEntity) {
-            // One-way: a freshly launched shape (below the divider, moving up) passes
-            // through; everything else collides so playground shapes stay above it.
-            if (shapeBody.position.y < Constants.LAUNCH_ZONE_TOP &&
-                shapeBody.linearVelocity.y > 0f
-            ) {
-                contact.isEnabled = false
-            }
+        val other = (if (dividerIsA) fb else fa).body
+        // One-way: any body still below the divider and moving up passes through;
+        // this lets launched shapes and power-up projectiles enter the playground.
+        if (other.position.y < Constants.LAUNCH_ZONE_TOP && other.linearVelocity.y > 0f) {
+            contact.isEnabled = false
         }
     }
 

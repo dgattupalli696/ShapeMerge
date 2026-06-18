@@ -15,6 +15,7 @@ import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.physics.box2d.Body
 import com.badlogic.gdx.physics.box2d.BodyDef
 import com.badlogic.gdx.physics.box2d.Box2DDebugRenderer
+import com.badlogic.gdx.physics.box2d.CircleShape
 import com.badlogic.gdx.physics.box2d.EdgeShape
 import com.badlogic.gdx.physics.box2d.FixtureDef
 import com.badlogic.gdx.physics.box2d.World
@@ -44,6 +45,12 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private lateinit var world: World
     private val shapes = ArrayList<ShapeEntity>()
     private val mergeQueue = ArrayList<Pair<ShapeEntity, ShapeEntity>>()
+
+    // Active power-up projectiles (bomb, cannonball) tracked for special behavior.
+    private class Projectile(val kind: AmmoKind, val body: Body) {
+        var life = 0f
+    }
+    private val projectiles = ArrayList<Projectile>()
 
     // Transient floating effects: circle-pop rings + floating score/combo text.
     private class Pop(
@@ -102,8 +109,17 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private fun randomAmmoLevel(): Int =
         MathUtils.random(Constants.MIN_LEVEL, ammoMaxLevel())
 
-    /** Produces the next ammo. Power-up kinds are mixed in by later features. */
-    private fun randomAmmo(): Ammo = Ammo(AmmoKind.SHAPE, randomAmmoLevel())
+    /** Produces the next ammo, occasionally a power-up. */
+    private fun randomAmmo(): Ammo =
+        if (MathUtils.random() < Constants.POWERUP_CHANCE) {
+            when (MathUtils.random(2)) {
+                0 -> Ammo(AmmoKind.BOMB)
+                1 -> Ammo(AmmoKind.CANNONBALL)
+                else -> Ammo(AmmoKind.MULTIBALL)
+            }
+        } else {
+            Ammo(AmmoKind.SHAPE, randomAmmoLevel())
+        }
 
     private fun buildWorld() {
         world = World(Vector2(0f, 0f), true)
@@ -137,6 +153,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private fun resetGame() {
         for (s in shapes) world.destroyBody(s.body)
         shapes.clear()
+        for (p in projectiles) world.destroyBody(p.body)
+        projectiles.clear()
         mergeQueue.clear()
         pops.clear()
         particles.clear()
@@ -174,9 +192,9 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
         when (currentAmmo.kind) {
             AmmoKind.SHAPE -> fireShape(currentAmmo.level, power)
-            AmmoKind.BOMB -> fireShape(currentAmmo.level, power)
-            AmmoKind.CANNONBALL -> fireShape(currentAmmo.level, power)
-            AmmoKind.MULTIBALL -> fireShape(currentAmmo.level, power)
+            AmmoKind.BOMB -> fireBomb(power)
+            AmmoKind.CANNONBALL -> fireCannonball(power)
+            AmmoKind.MULTIBALL -> fireMultiball(power)
         }
         sounds.playThrow()
         haptics.vibrate(8)
@@ -187,6 +205,10 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
     /** Launches a normal polygon shape of [shapeLevel] along the aim arrow. */
     private fun fireShape(shapeLevel: Int, power: Float) {
+        fireShapeInDir(shapeLevel, aimDir.x, aimDir.y, power)
+    }
+
+    private fun fireShapeInDir(shapeLevel: Int, dx: Float, dy: Float, power: Float) {
         // Spawn at the launcher so the shot travels exactly along the aim arrow.
         // The one-way divider lets it pass up into the playground.
         val spawnX = launcher.x
@@ -196,11 +218,55 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
         val impulse = power * Constants.IMPULSE_SCALE *
             (Constants.radiusForLevel(shapeLevel) / Constants.BASE_RADIUS)
-        shape.body.applyLinearImpulse(
-            aimDir.x * impulse, aimDir.y * impulse,
-            spawnX, spawnY, true
-        )
+        shape.body.applyLinearImpulse(dx * impulse, dy * impulse, spawnX, spawnY, true)
         shape.body.angularVelocity = MathUtils.random(-3f, 3f)
+    }
+
+    /** Three small shapes in a spread. */
+    private fun fireMultiball(power: Float) {
+        val baseAngle = atan2(aimDir.x, aimDir.y)
+        for (off in floatArrayOf(-0.22f, 0f, 0.22f)) {
+            val a = baseAngle + off
+            fireShapeInDir(Constants.MIN_LEVEL, sin(a), cos(a), power * 0.95f)
+        }
+    }
+
+    private fun spawnProjectileBody(radius: Float, sensor: Boolean, density: Float): Body {
+        val bodyDef = BodyDef().apply {
+            type = BodyDef.BodyType.DynamicBody
+            position.set(launcher.x, launcher.y)
+            bullet = true
+            linearDamping = if (sensor) 0.15f else 0.35f
+        }
+        val body = world.createBody(bodyDef)
+        val circle = CircleShape().apply { this.radius = radius }
+        val fixtureDef = FixtureDef().apply {
+            shape = circle
+            this.density = density
+            restitution = 0.25f
+            friction = 0.3f
+            isSensor = sensor
+        }
+        body.createFixture(fixtureDef)
+        circle.dispose()
+        return body
+    }
+
+    /** A bomb projectile that explodes near the first shape it reaches. */
+    private fun fireBomb(power: Float) {
+        val body = spawnProjectileBody(0.42f, sensor = true, density = 1f)
+        val impulse = power * Constants.IMPULSE_SCALE
+        body.applyLinearImpulse(aimDir.x * impulse, aimDir.y * impulse, launcher.x, launcher.y, true)
+        projectiles.add(Projectile(AmmoKind.BOMB, body))
+    }
+
+    /** A heavy cannonball that physically smashes through a cluster. */
+    private fun fireCannonball(power: Float) {
+        val body = spawnProjectileBody(Constants.CANNON_RADIUS, sensor = false, density = 9f)
+        val impulse = power * Constants.IMPULSE_SCALE * 4.5f
+        body.applyLinearImpulse(aimDir.x * impulse, aimDir.y * impulse, launcher.x, launcher.y, true)
+        body.angularVelocity = MathUtils.random(-2f, 2f)
+        projectiles.add(Projectile(AmmoKind.CANNONBALL, body))
     }
 
     private fun processMerges() {
@@ -358,11 +424,73 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         if (state != State.PLAYING) return
         world.step(min(delta, 1f / 30f), 8, 3)
         processMerges()
+        updateProjectiles(delta)
         if (comboTimer > 0f) {
             comboTimer -= delta
             if (comboTimer <= 0f) combo = 0
         }
         checkGameOver()
+    }
+
+    private fun updateProjectiles(delta: Float) {
+        if (projectiles.isEmpty()) return
+        val it = projectiles.iterator()
+        while (it.hasNext()) {
+            val p = it.next()
+            p.life += delta
+            when (p.kind) {
+                AmmoKind.BOMB -> {
+                    val pos = p.body.position
+                    var trigger = p.life >= Constants.BOMB_LIFE
+                    if (!trigger && pos.y > Constants.WORLD_HEIGHT - 0.6f) trigger = true
+                    if (!trigger && pos.y > Constants.LAUNCH_ZONE_TOP) {
+                        for (s in shapes) {
+                            val d = Vector2.dst(pos.x, pos.y, s.body.position.x, s.body.position.y)
+                            if (d < s.radius + 0.5f) { trigger = true; break }
+                        }
+                    }
+                    if (trigger) {
+                        explodeBomb(pos.x, pos.y)
+                        world.destroyBody(p.body)
+                        it.remove()
+                    }
+                }
+                AmmoKind.CANNONBALL -> {
+                    if (p.life >= Constants.CANNON_LIFE) {
+                        val pos = p.body.position
+                        confettiColor.set(0.7f, 0.7f, 0.78f, 1f)
+                        particles.burst(pos.x, pos.y, 14, confettiColor, 4f, 0.12f)
+                        world.destroyBody(p.body)
+                        it.remove()
+                    }
+                }
+                else -> it.remove()
+            }
+        }
+    }
+
+    private fun explodeBomb(x: Float, y: Float) {
+        fx.shake(0.3f, 0.4f)
+        fx.slowMo(0.5f, 0.4f)
+        sounds.playPop()
+        haptics.vibrate(40)
+        confettiColor.set(1f, 0.55f, 0.12f, 1f)
+        particles.burst(x, y, 55, confettiColor, 8f, 0.2f)
+
+        var cleared = 0
+        val it = shapes.iterator()
+        while (it.hasNext()) {
+            val s = it.next()
+            val d = Vector2.dst(x, y, s.body.position.x, s.body.position.y)
+            if (d < Constants.BOMB_BLAST_RADIUS + s.radius) {
+                particles.burst(s.body.position.x, s.body.position.y, 8, Constants.colorForLevel(s.level), 4f, 0.12f)
+                s.removed = true
+                world.destroyBody(s.body)
+                it.remove()
+                cleared++
+            }
+        }
+        if (cleared > 0) addScore(cleared * 30)
     }
 
     private fun draw() {
@@ -382,6 +510,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
         drawBoardBackground()
         drawShapes()
+        drawProjectiles()
         drawParticles()
         drawLauncherAndAim()
         drawPopRings()
@@ -389,6 +518,30 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         if (drawDebug) debugRenderer.render(world, camera.combined)
 
         drawHud()
+    }
+
+    private fun drawProjectiles() {
+        if (projectiles.isEmpty()) return
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
+        for (p in projectiles) {
+            val pos = p.body.position
+            when (p.kind) {
+                AmmoKind.BOMB -> {
+                    shapeRenderer.color = Color(0.12f, 0.12f, 0.14f, 1f)
+                    shapeRenderer.circle(pos.x, pos.y, 0.42f, 20)
+                    shapeRenderer.color = Color(1f, 0.55f, 0.12f, 1f) // spark/fuse
+                    shapeRenderer.circle(pos.x, pos.y + 0.42f, 0.12f, 10)
+                }
+                AmmoKind.CANNONBALL -> {
+                    shapeRenderer.color = Color(0.32f, 0.34f, 0.4f, 1f)
+                    shapeRenderer.circle(pos.x, pos.y, Constants.CANNON_RADIUS, 24)
+                    shapeRenderer.color = Color(0.5f, 0.52f, 0.58f, 1f)
+                    shapeRenderer.circle(pos.x - 0.18f, pos.y + 0.18f, 0.18f, 12)
+                }
+                else -> {}
+            }
+        }
+        shapeRenderer.end()
     }
 
     private fun drawParticles() {
@@ -495,10 +648,24 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
                 shapeRenderer.color = Constants.colorForLevel(ammo.level)
                 drawPolygonAt(x, y, ammo.level, radius, previewSpin)
             }
-            else -> {
-                // Placeholder; power-up kinds get distinct icons when added.
-                shapeRenderer.color = Color(0.9f, 0.9f, 0.95f, 1f)
+            AmmoKind.BOMB -> {
+                shapeRenderer.color = Color(0.12f, 0.12f, 0.14f, 1f)
                 shapeRenderer.circle(x, y, radius * 0.8f, 20)
+                shapeRenderer.color = Color(1f, 0.55f, 0.12f, 1f)
+                shapeRenderer.circle(x, y + radius * 0.8f, radius * 0.25f, 10)
+            }
+            AmmoKind.CANNONBALL -> {
+                shapeRenderer.color = Color(0.32f, 0.34f, 0.4f, 1f)
+                shapeRenderer.circle(x, y, radius * 0.85f, 24)
+                shapeRenderer.color = Color(0.5f, 0.52f, 0.58f, 1f)
+                shapeRenderer.circle(x - radius * 0.25f, y + radius * 0.25f, radius * 0.25f, 12)
+            }
+            AmmoKind.MULTIBALL -> {
+                shapeRenderer.color = Constants.colorForLevel(Constants.MIN_LEVEL)
+                val r = radius * 0.34f
+                shapeRenderer.circle(x, y + radius * 0.4f, r, 12)
+                shapeRenderer.circle(x - radius * 0.4f, y - radius * 0.3f, r, 12)
+                shapeRenderer.circle(x + radius * 0.4f, y - radius * 0.3f, r, 12)
             }
         }
     }
@@ -626,9 +793,16 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
                     return true
                 }
                 State.PLAYING -> {
-                    aiming = true
-                    screenToWorld(screenX, screenY)
-                    return true
+                    val w = screenToWorld(screenX, screenY)
+                    // Only start aiming when grabbing the launcher or touching the
+                    // playground; ignore taps elsewhere in the launch zone.
+                    val nearLauncher = Vector2.dst(w.x, w.y, launcher.x, launcher.y) < 1.5f
+                    val inPlayground = w.y >= Constants.LAUNCH_ZONE_TOP
+                    if (nearLauncher || inPlayground) {
+                        aiming = true
+                        return true
+                    }
+                    return false
                 }
             }
         }
