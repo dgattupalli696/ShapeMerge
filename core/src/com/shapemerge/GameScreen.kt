@@ -197,6 +197,11 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         val power = computeAim()
         if (power <= 0f) return
 
+        // A throw starts a new turn: end the previous turn's combo so combos only
+        // count the chain from a single throw (the player waits for it to resolve).
+        combo = 0
+        comboTimer = 0f
+
         when (currentAmmo.kind) {
             AmmoKind.SHAPE -> fireShape(currentAmmo.level, power)
             AmmoKind.BOMB -> fireBomb(power)
