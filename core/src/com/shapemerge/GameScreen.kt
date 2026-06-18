@@ -501,11 +501,29 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         world.step(min(delta, 1f / 30f), 8, 3)
         processMerges()
         updateProjectiles(delta)
+        ejectStrayShapes()
         if (comboTimer > 0f) {
             comboTimer -= delta
             if (comboTimer <= 0f) combo = 0
         }
         checkGameOver()
+    }
+
+    /**
+     * Keeps any shape that ends up in the launch zone (a failed/blocked launch)
+     * drifting upward so it always escapes back into the playground instead of
+     * getting stuck below the divider (the world is top-down / zero-gravity).
+     */
+    private fun ejectStrayShapes() {
+        for (s in shapes) {
+            val pos = s.body.position
+            if (pos.y < Constants.LAUNCH_ZONE_TOP - s.radius) {
+                val v = s.body.linearVelocity
+                if (v.y < Constants.LAUNCH_ESCAPE_SPEED) {
+                    s.body.setLinearVelocity(v.x, Constants.LAUNCH_ESCAPE_SPEED)
+                }
+            }
+        }
     }
 
     private fun updateProjectiles(delta: Float) {

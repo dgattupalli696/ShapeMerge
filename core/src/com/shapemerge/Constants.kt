@@ -61,6 +61,10 @@ object Constants {
     // Generous so a slow-rolling shape can still land and extend the chain.
     const val COMBO_WINDOW = 5.0f
 
+    // Stray shapes that end up in the launch zone (failed/blocked launches) are
+    // given at least this upward speed so they always escape back into play.
+    const val LAUNCH_ESCAPE_SPEED = 3.5f
+
     // Power-up ammo.
     const val MULTIBALL_CHANCE = 0.1f     // chance a normal ammo is a multi-ball
     const val BOMB_BLAST_RADIUS = 2.2f
