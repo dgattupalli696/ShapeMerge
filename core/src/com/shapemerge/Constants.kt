@@ -59,7 +59,7 @@ object Constants {
 
     // Combo: a merge within this many seconds of the last keeps the chain alive.
     // Generous so a slow-rolling shape can still land and extend the chain.
-    const val COMBO_WINDOW = 3.5f
+    const val COMBO_WINDOW = 5.0f
 
     // Power-up ammo.
     const val MULTIBALL_CHANCE = 0.1f     // chance a normal ammo is a multi-ball
