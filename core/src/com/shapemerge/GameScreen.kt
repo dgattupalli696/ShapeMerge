@@ -54,6 +54,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private val popDuration = 1.2f
 
     private val fx = Effects()
+    private val particles = Particles()
+    private val confettiColor = Color()
 
     private val prefs = Gdx.app.getPreferences("shapemerge")
 
@@ -121,6 +123,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         shapes.clear()
         mergeQueue.clear()
         pops.clear()
+        particles.clear()
         score = 0
         level = 1
         scoreTarget = Constants.BASE_TARGET
@@ -237,6 +240,9 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             fx.shake(0.32f, 0.45f)
             fx.slowMo(0.35f, 0.7f)
             fx.zoomPunch(0.12f, 0.55f)
+            // Confetti burst.
+            confettiColor.set(1f, 0.95f, 0.4f, 1f)
+            particles.burst(cx, cy, 60, confettiColor, 7f, 0.18f)
         } else {
             val merged = ShapeFactory.create(world, newLevel, cx, cy)
             merged.body.linearVelocity = Vector2(sumVX / count, sumVY / count)
@@ -244,6 +250,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             addScore(newLevel * newLevel * 5)
             // Small shake that grows with the merged shape's size.
             fx.shake(0.05f + (newLevel - Constants.MIN_LEVEL) * 0.018f, 0.16f)
+            // Merge burst in the merged shape's color.
+            particles.burst(cx, cy, 12 + newLevel * 2, Constants.colorForLevel(newLevel), 4.5f, 0.13f)
         }
     }
 
@@ -275,6 +283,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         val scaled = delta * fx.timeScale
         previewSpin += scaled * 0.6f
         updatePops(scaled)
+        particles.update(scaled)
         update(scaled)
         draw()
     }
@@ -313,12 +322,20 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
         drawBoardBackground()
         drawShapes()
+        drawParticles()
         drawLauncherAndAim()
         drawPopRings()
 
         if (drawDebug) debugRenderer.render(world, camera.combined)
 
         drawHud()
+    }
+
+    private fun drawParticles() {
+        Gdx.gl.glEnable(GL20.GL_BLEND)
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
+        particles.draw(shapeRenderer)
+        shapeRenderer.end()
     }
 
     private fun drawPopRings() {
