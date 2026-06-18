@@ -57,6 +57,9 @@ object Constants {
     const val MIN_PULL = 0.4f
     const val IMPULSE_SCALE = 5.5f
 
+    // Combo: a merge within this many seconds of the last keeps the chain alive.
+    const val COMBO_WINDOW = 1.8f
+
     // Max tilt of the aim away from straight up (radians). ~62 degrees keeps the
     // arrow inside a clear upward cone instead of swinging sideways/flat.
     const val MAX_AIM_TILT_RAD = 1.082f

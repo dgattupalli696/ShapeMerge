@@ -45,13 +45,23 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private val shapes = ArrayList<ShapeEntity>()
     private val mergeQueue = ArrayList<Pair<ShapeEntity, ShapeEntity>>()
 
-    // Transient "circle pop" effects (expanding ring + floating score).
-    private class Pop(val x: Float, val y: Float, val text: String) {
+    // Transient floating effects: circle-pop rings + floating score/combo text.
+    private class Pop(
+        val x: Float,
+        val y: Float,
+        val text: String,
+        val ring: Boolean,
+        val color: Color
+    ) {
         var time = 0f
     }
     private val pops = ArrayList<Pop>()
     private val popColor = Color()
     private val popDuration = 1.2f
+
+    // Combo: consecutive merges within a time window stack a score multiplier.
+    private var combo = 0
+    private var comboTimer = 0f
 
     private val fx = Effects()
     private val particles = Particles()
@@ -127,6 +137,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         mergeQueue.clear()
         pops.clear()
         particles.clear()
+        combo = 0
+        comboTimer = 0f
         score = 0
         level = 1
         scoreTarget = Constants.BASE_TARGET
@@ -236,11 +248,16 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         val cy = sumY / count
         val newLevel = base + (count - 1)
 
+        // Combo: extend the chain if within the window, else start fresh.
+        combo = if (comboTimer > 0f) combo + 1 else 1
+        comboTimer = Constants.COMBO_WINDOW
+        val mult = combo
+
         if (newLevel >= Constants.CIRCLE_LEVEL) {
             // Reached a circle: it pops for a big bonus and disappears.
-            val bonus = 2000 + base * 100
+            val bonus = (2000 + base * 100) * mult
             addScore(bonus)
-            pops.add(Pop(cx, cy, "+$bonus"))
+            pops.add(Pop(cx, cy, "+$bonus", true, Color(1f, 0.95f, 0.4f, 1f)))
             // Big juice: strong shake, slow-mo, and a zoom punch.
             fx.shake(0.32f, 0.45f)
             fx.slowMo(0.35f, 0.7f)
@@ -254,15 +271,31 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             val merged = ShapeFactory.create(world, newLevel, cx, cy)
             merged.body.linearVelocity = Vector2(sumVX / count, sumVY / count)
             shapes.add(merged)
-            addScore(newLevel * newLevel * 5)
+            addScore(newLevel * newLevel * 5 * mult)
             // Small shake that grows with the merged shape's size.
             fx.shake(0.05f + (newLevel - Constants.MIN_LEVEL) * 0.018f, 0.16f)
             // Merge burst in the merged shape's color.
             particles.burst(cx, cy, 12 + newLevel * 2, Constants.colorForLevel(newLevel), 4.5f, 0.13f)
-            // Pitch rises with the resulting shape level.
-            sounds.playMerge(0.8f + (newLevel - Constants.MIN_LEVEL) * 0.12f)
+            // Pitch rises with the resulting shape level and combo step.
+            sounds.playMerge(0.8f + (newLevel - Constants.MIN_LEVEL) * 0.12f + (combo - 1) * 0.06f)
             haptics.vibrate(14)
         }
+
+        // Floating combo callout.
+        if (combo >= 2) {
+            pops.add(Pop(cx, cy + 0.7f, comboLabel(combo), false, comboColor(combo)))
+        }
+    }
+
+    private fun comboLabel(c: Int): String = when {
+        c >= 8 -> "MEGA MERGE  x$c"
+        c >= 5 -> "SUPER  x$c"
+        else -> "x$c"
+    }
+
+    private fun comboColor(c: Int): Color {
+        val t = ((c - 2) / 8f).coerceIn(0f, 1f)
+        return Color(1f, 0.9f - t * 0.6f, 0.2f, 1f)
     }
 
     private fun addScore(points: Int) {
@@ -312,6 +345,10 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         if (state != State.PLAYING) return
         world.step(min(delta, 1f / 30f), 8, 3)
         processMerges()
+        if (comboTimer > 0f) {
+            comboTimer -= delta
+            if (comboTimer <= 0f) combo = 0
+        }
         checkGameOver()
     }
 
@@ -353,6 +390,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         Gdx.gl.glEnable(GL20.GL_BLEND)
         shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
         for (p in pops) {
+            if (!p.ring) continue
             val t = (p.time / popDuration).coerceIn(0f, 1f)
             val alpha = 1f - t
             val r = 0.5f + t * 2.6f
@@ -508,6 +546,15 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         font.data.setScale(1.1f)
         font.draw(batch, "NEXT", nextHudX - 36f, nextHudY - 52f)
 
+        // Pulsing combo multiplier in the playground while a chain is active.
+        if (state == State.PLAYING && combo >= 2) {
+            val pulse = (comboTimer / Constants.COMBO_WINDOW).coerceIn(0f, 1f)
+            val c = comboColor(combo)
+            font.data.setScale(2.2f + pulse * 0.9f)
+            font.color = popColor.set(c.r, c.g, c.b, 0.55f + pulse * 0.45f)
+            font.draw(batch, "x$combo", 0f, Constants.HUD_HEIGHT * 0.66f, Constants.HUD_WIDTH, Align.center, false)
+        }
+
         drawPopScores()
 
         font.color = Color.WHITE
@@ -527,8 +574,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             val hx = p.x / Constants.WORLD_WIDTH * Constants.HUD_WIDTH
             val hy = p.y / Constants.WORLD_HEIGHT * Constants.HUD_HEIGHT + t * 130f
             font.data.setScale(2.6f - t * 0.6f)
-            font.color = Color(1f, 0.95f, 0.35f, 1f - t)
-            font.draw(batch, p.text, hx - 120f, hy, 240f, Align.center, false)
+            font.color = popColor.set(p.color.r, p.color.g, p.color.b, 1f - t)
+            font.draw(batch, p.text, hx - 160f, hy, 320f, Align.center, false)
         }
     }
 
