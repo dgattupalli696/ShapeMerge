@@ -21,6 +21,7 @@ import com.badlogic.gdx.physics.box2d.FixtureDef
 import com.badlogic.gdx.physics.box2d.World
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.viewport.FitViewport
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
@@ -62,6 +63,15 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private val bumpers = ArrayList<Body>()
     private var bumperLevelsLeft = 0
     private val bumperColor = Color(0.95f, 0.45f, 0.85f, 1f)
+
+    // Squeeze walls: a random hazard that closes the playground's sides inward for
+    // a few levels, then retracts.
+    private var squeezeBody: Body? = null
+    private var squeezeTargetInset = 0f
+    private var squeezeInset = 0f
+    private var squeezeLevelsLeft = 0
+    private var squeezeBuiltInset = -1f
+    private var squeezeAnnounceTimer = 0f
 
     // Transient floating effects: circle-pop rings + floating score/combo text.
     private class Pop(
@@ -224,6 +234,71 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         bumpers.clear()
     }
 
+    /** Called on each level change: activate or expire the random squeeze hazard. */
+    private fun updateSqueezeForLevel() {
+        if (squeezeLevelsLeft > 0) {
+            squeezeLevelsLeft--
+            if (squeezeLevelsLeft == 0) squeezeTargetInset = 0f // retract
+            return
+        }
+        if (squeezeTargetInset == 0f && squeezeInset < 0.05f &&
+            level >= Constants.SQUEEZE_MIN_LEVEL &&
+            MathUtils.random() < Constants.SQUEEZE_APPEAR_CHANCE
+        ) {
+            squeezeTargetInset = Constants.SQUEEZE_INSET
+            squeezeLevelsLeft = MathUtils.random(2, 4)
+            squeezeAnnounceTimer = 2.0f
+            fx.shake(0.12f, 0.25f)
+            haptics.vibrate(24)
+        }
+    }
+
+    /** Eases the squeeze walls toward their target inset and rebuilds the barrier. */
+    private fun updateSqueeze(delta: Float) {
+        if (squeezeInset == squeezeTargetInset) {
+            if (squeezeTargetInset == 0f && squeezeBody != null) {
+                world.destroyBody(squeezeBody!!); squeezeBody = null; squeezeBuiltInset = -1f
+            }
+            return
+        }
+        val dir = if (squeezeTargetInset > squeezeInset) 1f else -1f
+        squeezeInset += dir * Constants.SQUEEZE_SPEED * delta
+        if ((dir > 0 && squeezeInset > squeezeTargetInset) ||
+            (dir < 0 && squeezeInset < squeezeTargetInset)
+        ) squeezeInset = squeezeTargetInset
+        rebuildSqueezeBody()
+        for (s in shapes) s.body.isAwake = true
+    }
+
+    private fun rebuildSqueezeBody() {
+        if (squeezeBody != null && abs(squeezeInset - squeezeBuiltInset) < 0.03f) return
+        squeezeBody?.let { world.destroyBody(it) }
+        squeezeBody = null
+        if (squeezeInset < 0.02f) { squeezeBuiltInset = 0f; return }
+        val def = BodyDef().apply { type = BodyDef.BodyType.StaticBody }
+        val b = world.createBody(def)
+        val edge = EdgeShape()
+        val fd = FixtureDef().apply { shape = edge; restitution = 0.3f; friction = 0.2f }
+        val bottom = Constants.LAUNCH_ZONE_TOP
+        val top = Constants.WORLD_HEIGHT
+        edge.set(squeezeInset, bottom, squeezeInset, top)
+        b.createFixture(fd).userData = Constants.SQUEEZE
+        edge.set(Constants.WORLD_WIDTH - squeezeInset, bottom, Constants.WORLD_WIDTH - squeezeInset, top)
+        b.createFixture(fd).userData = Constants.SQUEEZE
+        edge.dispose()
+        squeezeBody = b
+        squeezeBuiltInset = squeezeInset
+    }
+
+    private fun clearSqueeze() {
+        squeezeBody?.let { world.destroyBody(it) }
+        squeezeBody = null
+        squeezeInset = 0f
+        squeezeTargetInset = 0f
+        squeezeLevelsLeft = 0
+        squeezeBuiltInset = -1f
+    }
+
     private fun resetGame() {
         for (s in shapes) world.destroyBody(s.body)
         shapes.clear()
@@ -251,6 +326,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         applyLevelGravity()
         clearBumpers()
         bumperLevelsLeft = 0
+        clearSqueeze()
     }
 
     /**
@@ -517,6 +593,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             scoreTarget += Constants.BASE_TARGET + level * 250
             applyLevelGravity()
             updateBumpersForLevel()
+            updateSqueezeForLevel()
         }
         checkScoreMilestone(before, score)
     }
@@ -597,6 +674,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private fun update(delta: Float) {
         if (state != State.PLAYING) return
         updateGravity(delta)
+        updateSqueeze(delta)
+        if (squeezeAnnounceTimer > 0f) squeezeAnnounceTimer -= delta
         world.step(min(delta, 1f / 30f), 8, 3)
         processMerges()
         updateProjectiles(delta)
@@ -771,6 +850,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
         drawBoardBackground()
         drawGravityIndicator()
+        drawSqueezeWalls()
         drawBumpers()
         drawShapes()
         drawProjectiles()
@@ -808,6 +888,26 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         // Head.
         val hh = 0.32f
         shapeRenderer.triangle(tipX + dx * 0.35f, tipY + dy * 0.35f, tipX + px * hh, tipY + py * hh, tipX - px * hh, tipY - py * hh)
+        shapeRenderer.end()
+        Gdx.gl.glDisable(GL20.GL_BLEND)
+    }
+
+    /** Draws the squeeze walls and shades the out-of-bounds side regions. */
+    private fun drawSqueezeWalls() {
+        if (squeezeInset < 0.02f) return
+        val bottom = Constants.LAUNCH_ZONE_TOP
+        val h = Constants.WORLD_HEIGHT - bottom
+        val w = Constants.WORLD_WIDTH
+        Gdx.gl.glEnable(GL20.GL_BLEND)
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
+        // Shaded out-of-bounds regions.
+        shapeRenderer.color = Color(0.08f, 0.09f, 0.13f, 0.92f)
+        shapeRenderer.rect(0f, bottom, squeezeInset, h)
+        shapeRenderer.rect(w - squeezeInset, bottom, squeezeInset, h)
+        // Bright wall edges.
+        shapeRenderer.color = Color(0.85f, 0.35f, 0.4f, 1f)
+        shapeRenderer.rect(squeezeInset - 0.06f, bottom, 0.12f, h)
+        shapeRenderer.rect(w - squeezeInset - 0.06f, bottom, 0.12f, h)
         shapeRenderer.end()
         Gdx.gl.glDisable(GL20.GL_BLEND)
     }
@@ -1065,6 +1165,13 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             font.data.setScale(2.6f)
             font.color = popColor.set(0.6f, 0.85f, 1f, a)
             font.draw(batch, gravityMode.label, 0f, Constants.HUD_HEIGHT * 0.74f,
+                Constants.HUD_WIDTH, Align.center, false)
+        }
+        if (state == State.PLAYING && squeezeAnnounceTimer > 0f) {
+            val a = (squeezeAnnounceTimer / 2.0f).coerceIn(0f, 1f)
+            font.data.setScale(2.4f)
+            font.color = popColor.set(0.95f, 0.45f, 0.5f, a)
+            font.draw(batch, "WALLS CLOSING IN", 0f, Constants.HUD_HEIGHT * 0.7f,
                 Constants.HUD_WIDTH, Align.center, false)
         }
 

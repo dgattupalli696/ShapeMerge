@@ -37,8 +37,15 @@ object Constants {
     const val BUMPER = "bumper"
     const val BUMPER_RADIUS = 0.62f
     const val BUMPER_RESTITUTION = 1.25f
-    const val BUMPER_APPEAR_CHANCE = 0.4f     // chance per level (when none active)
+    const val BUMPER_APPEAR_CHANCE = 0.3f     // chance per level (when none active)
     const val BUMPER_MIN_LEVEL = 2            // earliest level bumpers can appear
+
+    // Squeeze walls: a random hazard that narrows the playground for a few levels.
+    const val SQUEEZE = "squeeze"
+    const val SQUEEZE_APPEAR_CHANCE = 0.25f
+    const val SQUEEZE_MIN_LEVEL = 3
+    const val SQUEEZE_INSET = 1.6f            // how far each side comes in
+    const val SQUEEZE_SPEED = 1.4f            // units/sec the walls slide
 
     // Ladder runs triangle (3) to decagon (10). Size grows per step but is capped
     // at MAX_RADIUS, which octagon (level 8) reaches exactly: 0.55 + 5*0.08 = 0.95.
