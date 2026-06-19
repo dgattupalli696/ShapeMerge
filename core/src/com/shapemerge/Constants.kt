@@ -69,6 +69,9 @@ object Constants {
     // giving them time to spread out before behaving like normal shapes.
     const val MULTIBALL_NOMERGE_TIME = 1.3f
 
+    // Gravity-flip levels: acceleration magnitude when a level has gravity.
+    const val GRAVITY_STRENGTH = 7.0f
+
     // Power-up ammo.
     const val MULTIBALL_CHANCE = 0.1f     // chance a normal ammo is a multi-ball
     const val BOMB_BLAST_RADIUS = 2.2f

@@ -74,6 +74,12 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private var combo = 0
     private var comboTimer = 0f
 
+    // Gravity-flip levels: world gravity eases from current toward target.
+    private var gravityMode = Gravity.ZERO
+    private val currentGravity = Vector2()
+    private val targetGravity = Vector2()
+    private var gravityAnnounceTimer = 0f
+
     private val fx = Effects()
     private val particles = Particles()
     private val confettiColor = Color()
@@ -166,6 +172,11 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         combo = 0
         comboTimer = 0f
         pendingPowerUps.clear()
+        gravityMode = Gravity.ZERO
+        currentGravity.set(0f, 0f)
+        targetGravity.set(0f, 0f)
+        gravityAnnounceTimer = 0f
+        world.gravity = currentGravity
         score = 0
         level = 1
         scoreTarget = Constants.BASE_TARGET
@@ -174,6 +185,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         nextAmmo = randomAmmo()
         aiming = false
         state = State.PLAYING
+        applyLevelGravity()
     }
 
     /**
@@ -438,8 +450,22 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         if (score >= scoreTarget) {
             level++
             scoreTarget += Constants.BASE_TARGET + level * 250
+            applyLevelGravity()
         }
         checkScoreMilestone(before, score)
+    }
+
+    /** Sets the world gravity for the current level, with a telegraph. */
+    private fun applyLevelGravity() {
+        val g = Gravity.forLevel(level)
+        if (g == gravityMode) return
+        gravityMode = g
+        targetGravity.set(g.dx * Constants.GRAVITY_STRENGTH, g.dy * Constants.GRAVITY_STRENGTH)
+        if (g != Gravity.ZERO) {
+            gravityAnnounceTimer = 2.4f
+            fx.shake(0.12f, 0.25f)
+            haptics.vibrate(24)
+        }
     }
 
     /** Awards a random power-up each time the score crosses a milestone. */
@@ -499,6 +525,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
     private fun update(delta: Float) {
         if (state != State.PLAYING) return
+        updateGravity(delta)
         world.step(min(delta, 1f / 30f), 8, 3)
         processMerges()
         updateProjectiles(delta)
@@ -508,6 +535,18 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             if (comboTimer <= 0f) combo = 0
         }
         checkGameOver()
+    }
+
+    /** Eases world gravity toward the level target and keeps bodies awake to react. */
+    private fun updateGravity(delta: Float) {
+        if (currentGravity.epsilonEquals(targetGravity, 0.01f)) {
+            if (gravityAnnounceTimer > 0f) gravityAnnounceTimer -= delta
+            return
+        }
+        currentGravity.lerp(targetGravity, min(1f, delta * 2.5f))
+        world.gravity = currentGravity
+        for (s in shapes) s.body.isAwake = true
+        if (gravityAnnounceTimer > 0f) gravityAnnounceTimer -= delta
     }
 
     /**
@@ -653,6 +692,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         shapeRenderer.projectionMatrix = camera.combined
 
         drawBoardBackground()
+        drawGravityIndicator()
         drawShapes()
         drawProjectiles()
         drawParticles()
@@ -662,6 +702,35 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         if (drawDebug) debugRenderer.render(world, camera.combined)
 
         drawHud()
+    }
+
+    /** Persistent arrow showing the current gravity direction (when non-zero). */
+    private fun drawGravityIndicator() {
+        if (gravityMode == Gravity.ZERO) return
+        val dx = gravityMode.dx
+        val dy = gravityMode.dy
+        // Anchor in the upper-right of the playground.
+        val cx = Constants.WORLD_WIDTH - 0.9f
+        val cy = Constants.WORLD_HEIGHT - 1.1f
+        val len = 0.55f
+        val px = -dy
+        val py = dx
+        val tipX = cx + dx * len
+        val tipY = cy + dy * len
+        val baseX = cx - dx * len
+        val baseY = cy - dy * len
+        Gdx.gl.glEnable(GL20.GL_BLEND)
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
+        shapeRenderer.color = Color(0.55f, 0.62f, 0.85f, 0.6f)
+        // Shaft.
+        val hw = 0.12f
+        shapeRenderer.triangle(baseX + px * hw, baseY + py * hw, baseX - px * hw, baseY - py * hw, tipX + px * hw, tipY + py * hw)
+        shapeRenderer.triangle(baseX - px * hw, baseY - py * hw, tipX - px * hw, tipY - py * hw, tipX + px * hw, tipY + py * hw)
+        // Head.
+        val hh = 0.32f
+        shapeRenderer.triangle(tipX + dx * 0.35f, tipY + dy * 0.35f, tipX + px * hh, tipY + py * hh, tipX - px * hh, tipY - py * hh)
+        shapeRenderer.end()
+        Gdx.gl.glDisable(GL20.GL_BLEND)
     }
 
     private fun drawProjectiles() {
@@ -893,6 +962,15 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         }
 
         drawPopScores()
+
+        // Gravity telegraph: big flashing announcement on a gravity-level change.
+        if (state == State.PLAYING && gravityAnnounceTimer > 0f && gravityMode != Gravity.ZERO) {
+            val a = (gravityAnnounceTimer / 2.4f).coerceIn(0f, 1f)
+            font.data.setScale(2.6f)
+            font.color = popColor.set(0.6f, 0.85f, 1f, a)
+            font.draw(batch, gravityMode.label, 0f, Constants.HUD_HEIGHT * 0.74f,
+                Constants.HUD_WIDTH, Align.center, false)
+        }
 
         font.color = Color.WHITE
         when (state) {
