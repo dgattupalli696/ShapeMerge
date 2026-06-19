@@ -262,6 +262,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
                 launcher.y + perpY * lateral
             )
             s.mergeGroup = group
+            s.mergeGroupTimer = Constants.MULTIBALL_NOMERGE_TIME
         }
     }
 
@@ -501,7 +502,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         world.step(min(delta, 1f / 30f), 8, 3)
         processMerges()
         updateProjectiles(delta)
-        ejectStrayShapes()
+        updateShapes(delta)
         if (comboTimer > 0f) {
             comboTimer -= delta
             if (comboTimer <= 0f) combo = 0
@@ -510,11 +511,12 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     }
 
     /**
-     * Keeps any shape that ends up in the launch zone (a failed/blocked launch)
-     * drifting upward so it always escapes back into the playground instead of
-     * getting stuck below the divider (the world is top-down / zero-gravity).
+     * Per-frame upkeep for shapes:
+     * - Keeps any shape in the launch zone (a failed/blocked launch) drifting up
+     *   so it always escapes back into play (the world is top-down / zero-gravity).
+     * - Expires multi-ball merge groups so volley-mates can merge once spread out.
      */
-    private fun ejectStrayShapes() {
+    private fun updateShapes(delta: Float) {
         for (s in shapes) {
             val pos = s.body.position
             if (pos.y < Constants.LAUNCH_ZONE_TOP - s.radius) {
@@ -522,6 +524,32 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
                 if (v.y < Constants.LAUNCH_ESCAPE_SPEED) {
                     s.body.setLinearVelocity(v.x, Constants.LAUNCH_ESCAPE_SPEED)
                 }
+            }
+            if (s.mergeGroup != 0) {
+                s.mergeGroupTimer -= delta
+                if (s.mergeGroupTimer <= 0f) {
+                    s.mergeGroup = 0
+                    // If it's resting against a same-level shape when the group
+                    // expires, queue that merge (begin-contact won't re-fire).
+                    queueOverlapMerge(s)
+                }
+            }
+        }
+    }
+
+    /** Queues a merge if [s] currently overlaps another same-level, mergeable shape. */
+    private fun queueOverlapMerge(s: ShapeEntity) {
+        for (o in shapes) {
+            if (o === s || o.removed) continue
+            if (o.level != s.level) continue
+            if (o.mergeGroup != 0 && o.mergeGroup == s.mergeGroup) continue
+            val d = Vector2.dst(
+                s.body.position.x, s.body.position.y,
+                o.body.position.x, o.body.position.y
+            )
+            if (d < s.radius + o.radius + 0.05f) {
+                mergeQueue.add(s to o)
+                return
             }
         }
     }

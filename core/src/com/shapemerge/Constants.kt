@@ -65,6 +65,10 @@ object Constants {
     // given at least this upward speed so they always escape back into play.
     const val LAUNCH_ESCAPE_SPEED = 3.5f
 
+    // How long multi-ball shapes refuse to merge with their own volley-mates,
+    // giving them time to spread out before behaving like normal shapes.
+    const val MULTIBALL_NOMERGE_TIME = 1.3f
+
     // Power-up ammo.
     const val MULTIBALL_CHANCE = 0.1f     // chance a normal ammo is a multi-ball
     const val BOMB_BLAST_RADIUS = 2.2f
