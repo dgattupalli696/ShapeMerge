@@ -77,7 +77,6 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
     // Gravity-flip levels: world gravity eases from current toward target.
     private var gravityMode = Gravity.ZERO
-    private var gravityBand = 0
     private val currentGravity = Vector2()
     private val targetGravity = Vector2()
     private var gravityAnnounceTimer = 0f
@@ -175,7 +174,6 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         comboTimer = 0f
         pendingPowerUps.clear()
         gravityMode = Gravity.ZERO
-        gravityBand = 0
         currentGravity.set(0f, 0f)
         targetGravity.set(0f, 0f)
         gravityAnnounceTimer = 0f
@@ -459,18 +457,17 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     }
 
     /**
-     * Updates world gravity for the current level. Gravity is zero for levels 1-4,
-     * then a RANDOM non-zero direction is chosen for each 5-level band and kept for
-     * the whole band. Telegraphs the change.
+     * Updates world gravity for the current level. Gravity is a one-level event on
+     * every 5th level (a random LEFT/RIGHT/UP direction), reverting to zero-G on the
+     * next level. Telegraphs the change.
      */
     private fun applyLevelGravity() {
-        val band = Gravity.bandForLevel(level)
-        if (band == gravityBand) return
-        gravityBand = band
-        val g = if (band == 0) Gravity.ZERO else Gravity.randomNonZero(gravityMode)
-        gravityMode = g
-        targetGravity.set(g.dx * Constants.GRAVITY_STRENGTH, g.dy * Constants.GRAVITY_STRENGTH)
-        if (g != Gravity.ZERO) {
+        val want = if (Gravity.isGravityLevel(level)) Gravity.randomNonZero(gravityMode)
+                   else Gravity.ZERO
+        if (want == gravityMode) return
+        gravityMode = want
+        targetGravity.set(want.dx * Constants.GRAVITY_STRENGTH, want.dy * Constants.GRAVITY_STRENGTH)
+        if (want != Gravity.ZERO) {
             gravityAnnounceTimer = 2.4f
             fx.shake(0.12f, 0.25f)
             haptics.vibrate(24)
