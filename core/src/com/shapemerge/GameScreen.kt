@@ -69,9 +69,17 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     private var squeezeBody: Body? = null
     private var squeezeTargetInset = 0f
     private var squeezeInset = 0f
-    private var squeezeLevelsLeft = 0
+    private var squeezeTimeLeft = 0f
     private var squeezeBuiltInset = -1f
     private var squeezeAnnounceTimer = 0f
+
+    // Portals: a random hazard pair that teleports shapes between them.
+    private val portals = ArrayList<Body>()
+    private val portalPos = arrayOf(Vector2(), Vector2())
+    private var portalLevelsLeft = 0
+    private val portalQueue = ArrayList<Pair<ShapeEntity, Int>>()
+    private val portalColorA = Color(0.3f, 0.7f, 1f, 1f)
+    private val portalColorB = Color(1f, 0.6f, 0.2f, 1f)
 
     // Transient floating effects: circle-pop rings + floating score/combo text.
     private class Pop(
@@ -153,7 +161,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         world = World(Vector2(0f, 0f), true)
         world.setContactListener(MergeContactListener(
             { a, b -> mergeQueue.add(a to b) },
-            { x, y -> onBumperHit(x, y) }
+            { x, y -> onBumperHit(x, y) },
+            { shape, portalIndex -> queuePortal(shape, portalIndex) }
         ))
         createWalls()
     }
@@ -162,6 +171,12 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         particles.burst(x, y, 8, bumperColor, 5f, 0.12f)
         sounds.playMerge(1.6f)
         fx.shake(0.04f, 0.08f)
+    }
+
+    private fun queuePortal(shape: ShapeEntity, portalIndex: Int) {
+        if (shape.removed || shape.portalCooldown > 0f) return
+        if (portals.size < 2) return
+        portalQueue.add(shape to portalIndex)
     }
 
     private fun createWalls() {
@@ -187,6 +202,12 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         edge.dispose()
     }
 
+    /** True if any hazard is currently active or transitioning (prevents overlap). */
+    private fun anyHazardActive(): Boolean =
+        bumperLevelsLeft > 0 ||
+        portalLevelsLeft > 0 ||
+        squeezeTimeLeft > 0f || squeezeInset > 0.05f
+
     /** Called on each level change: spawn or expire the random bumper hazard. */
     private fun updateBumpersForLevel() {
         if (bumperLevelsLeft > 0) {
@@ -194,6 +215,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             if (bumperLevelsLeft == 0) clearBumpers()
             return
         }
+        if (anyHazardActive()) return
         if (level >= Constants.BUMPER_MIN_LEVEL &&
             MathUtils.random() < Constants.BUMPER_APPEAR_CHANCE
         ) {
@@ -234,19 +256,16 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         bumpers.clear()
     }
 
-    /** Called on each level change: activate or expire the random squeeze hazard. */
+    /** Called on each level change: maybe activate the squeeze hazard (time-based). */
     private fun updateSqueezeForLevel() {
-        if (squeezeLevelsLeft > 0) {
-            squeezeLevelsLeft--
-            if (squeezeLevelsLeft == 0) squeezeTargetInset = 0f // retract
-            return
-        }
+        if (squeezeTimeLeft > 0f) return // already active
+        if (anyHazardActive()) return
         if (squeezeTargetInset == 0f && squeezeInset < 0.05f &&
             level >= Constants.SQUEEZE_MIN_LEVEL &&
             MathUtils.random() < Constants.SQUEEZE_APPEAR_CHANCE
         ) {
             squeezeTargetInset = Constants.SQUEEZE_INSET
-            squeezeLevelsLeft = MathUtils.random(2, 4)
+            squeezeTimeLeft = Constants.SQUEEZE_DURATION
             squeezeAnnounceTimer = 2.0f
             fx.shake(0.12f, 0.25f)
             haptics.vibrate(24)
@@ -255,6 +274,13 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
     /** Eases the squeeze walls toward their target inset and rebuilds the barrier. */
     private fun updateSqueeze(delta: Float) {
+        if (squeezeTimeLeft > 0f) {
+            squeezeTimeLeft -= delta
+            if (squeezeTimeLeft <= 0f) {
+                squeezeTimeLeft = 0f
+                squeezeTargetInset = 0f // retract
+            }
+        }
         if (squeezeInset == squeezeTargetInset) {
             if (squeezeTargetInset == 0f && squeezeBody != null) {
                 world.destroyBody(squeezeBody!!); squeezeBody = null; squeezeBuiltInset = -1f
@@ -295,8 +321,85 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         squeezeBody = null
         squeezeInset = 0f
         squeezeTargetInset = 0f
-        squeezeLevelsLeft = 0
+        squeezeTimeLeft = 0f
         squeezeBuiltInset = -1f
+    }
+
+    /** Called on each level change: spawn or expire the random portal hazard. */
+    private fun updatePortalsForLevel() {
+        if (portalLevelsLeft > 0) {
+            portalLevelsLeft--
+            if (portalLevelsLeft == 0) clearPortals()
+            return
+        }
+        if (anyHazardActive()) return
+        if (level >= Constants.PORTAL_MIN_LEVEL &&
+            MathUtils.random() < Constants.PORTAL_APPEAR_CHANCE
+        ) {
+            spawnPortals()
+            portalLevelsLeft = MathUtils.random(2, 4)
+        }
+    }
+
+    private fun spawnPortals() {
+        clearPortals()
+        // Two portals at random, well-separated playground spots.
+        val a = Vector2(
+            MathUtils.random(1.6f, Constants.WORLD_WIDTH - 1.6f),
+            MathUtils.random(Constants.LAUNCH_ZONE_TOP + 2.5f, Constants.WORLD_HEIGHT * 0.55f)
+        )
+        val b = Vector2()
+        var attempts = 0
+        do {
+            b.set(
+                MathUtils.random(1.6f, Constants.WORLD_WIDTH - 1.6f),
+                MathUtils.random(Constants.WORLD_HEIGHT * 0.6f, Constants.WORLD_HEIGHT - 2f)
+            )
+            attempts++
+        } while (Vector2.dst(a.x, a.y, b.x, b.y) < 4f && attempts < 30)
+        portalPos[0].set(a)
+        portalPos[1].set(b)
+        val shape = CircleShape().apply { radius = Constants.PORTAL_RADIUS }
+        for (i in 0..1) {
+            val def = BodyDef().apply {
+                type = BodyDef.BodyType.StaticBody
+                position.set(portalPos[i])
+            }
+            val body = world.createBody(def)
+            val fd = FixtureDef().apply {
+                this.shape = shape
+                isSensor = true
+            }
+            body.createFixture(fd).userData = PortalMark(i)
+            portals.add(body)
+        }
+        shape.dispose()
+    }
+
+    private fun clearPortals() {
+        for (p in portals) world.destroyBody(p)
+        portals.clear()
+        portalQueue.clear()
+    }
+
+    /** Teleports queued shapes to the paired portal (run after world.step). */
+    private fun processPortals() {
+        if (portalQueue.isEmpty()) return
+        for ((shape, fromIndex) in portalQueue) {
+            if (shape.removed || shape.portalCooldown > 0f || portals.size < 2) continue
+            val dest = portalPos[1 - fromIndex]
+            val v = shape.body.linearVelocity
+            val speed = v.len()
+            // Exit moving in the same direction, offset clear of the exit portal.
+            val dirX: Float; val dirY: Float
+            if (speed > 0.01f) { dirX = v.x / speed; dirY = v.y / speed } else { dirX = 0f; dirY = 1f }
+            val offset = Constants.PORTAL_RADIUS + shape.radius + 0.15f
+            shape.body.setTransform(dest.x + dirX * offset, dest.y + dirY * offset, shape.body.angle)
+            shape.portalCooldown = Constants.PORTAL_COOLDOWN
+            particles.burst(dest.x, dest.y, 14, portalColorA, 6f, 0.12f)
+            sounds.playMerge(1.3f)
+        }
+        portalQueue.clear()
     }
 
     private fun resetGame() {
@@ -327,6 +430,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         clearBumpers()
         bumperLevelsLeft = 0
         clearSqueeze()
+        clearPortals()
+        portalLevelsLeft = 0
     }
 
     /**
@@ -594,6 +699,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             applyLevelGravity()
             updateBumpersForLevel()
             updateSqueezeForLevel()
+            updatePortalsForLevel()
         }
         checkScoreMilestone(before, score)
     }
@@ -678,6 +784,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         if (squeezeAnnounceTimer > 0f) squeezeAnnounceTimer -= delta
         world.step(min(delta, 1f / 30f), 8, 3)
         processMerges()
+        processPortals()
         updateProjectiles(delta)
         updateShapes(delta)
         if (comboTimer > 0f) {
@@ -721,6 +828,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
                 if (v.y < escape) s.body.setLinearVelocity(v.x, escape)
                 s.body.isAwake = true
             }
+            if (s.portalCooldown > 0f) s.portalCooldown -= delta
             if (s.mergeGroup != 0) {
                 s.mergeGroupTimer -= delta
                 if (s.mergeGroupTimer <= 0f) {
@@ -851,6 +959,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         drawBoardBackground()
         drawGravityIndicator()
         drawSqueezeWalls()
+        drawPortals()
         drawBumpers()
         drawShapes()
         drawProjectiles()
@@ -908,6 +1017,34 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         shapeRenderer.color = Color(0.85f, 0.35f, 0.4f, 1f)
         shapeRenderer.rect(squeezeInset - 0.06f, bottom, 0.12f, h)
         shapeRenderer.rect(w - squeezeInset - 0.06f, bottom, 0.12f, h)
+        shapeRenderer.end()
+        Gdx.gl.glDisable(GL20.GL_BLEND)
+    }
+
+    /** Draws the portal pair (swirling rings). */
+    private fun drawPortals() {
+        if (portals.size < 2) return
+        Gdx.gl.glEnable(GL20.GL_BLEND)
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
+        for (i in 0..1) {
+            val p = portalPos[i]
+            val col = if (i == 0) portalColorA else portalColorB
+            val spin = previewSpin * (if (i == 0) 3f else -3f)
+            // Outer ring.
+            shapeRenderer.color = Color(col.r, col.g, col.b, 0.9f)
+            shapeRenderer.circle(p.x, p.y, Constants.PORTAL_RADIUS, 30)
+            // Dark middle.
+            shapeRenderer.color = Color(0.1f, 0.1f, 0.15f, 1f)
+            shapeRenderer.circle(p.x, p.y, Constants.PORTAL_RADIUS * 0.62f, 26)
+            // Spinning marker dots.
+            shapeRenderer.color = Color(1f, 1f, 1f, 0.9f)
+            for (k in 0 until 3) {
+                val ang = spin + k * MathUtils.PI2 / 3f
+                val rx = p.x + MathUtils.cos(ang) * Constants.PORTAL_RADIUS * 0.8f
+                val ry = p.y + MathUtils.sin(ang) * Constants.PORTAL_RADIUS * 0.8f
+                shapeRenderer.circle(rx, ry, 0.1f, 8)
+            }
+        }
         shapeRenderer.end()
         Gdx.gl.glDisable(GL20.GL_BLEND)
     }

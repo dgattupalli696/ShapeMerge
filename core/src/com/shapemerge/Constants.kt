@@ -46,6 +46,13 @@ object Constants {
     const val SQUEEZE_MIN_LEVEL = 3
     const val SQUEEZE_INSET = 1.6f            // how far each side comes in
     const val SQUEEZE_SPEED = 1.4f            // units/sec the walls slide
+    const val SQUEEZE_DURATION = 60f          // seconds the walls stay squeezed
+
+    // Portals: a random hazard pair that teleports shapes from one to the other.
+    const val PORTAL_RADIUS = 0.7f
+    const val PORTAL_APPEAR_CHANCE = 0.25f
+    const val PORTAL_MIN_LEVEL = 3
+    const val PORTAL_COOLDOWN = 0.4f
 
     // Ladder runs triangle (3) to decagon (10). Size grows per step but is capped
     // at MAX_RADIUS, which octagon (level 8) reaches exactly: 0.55 + 5*0.08 = 0.95.

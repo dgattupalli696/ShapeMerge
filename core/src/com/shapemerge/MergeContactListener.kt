@@ -12,7 +12,8 @@ import com.badlogic.gdx.physics.box2d.Manifold
  */
 class MergeContactListener(
     private val onSameLevelContact: (ShapeEntity, ShapeEntity) -> Unit,
-    private val onBumperHit: (Float, Float) -> Unit
+    private val onBumperHit: (Float, Float) -> Unit,
+    private val onPortalEnter: (ShapeEntity, Int) -> Unit
 ) : ContactListener {
 
     override fun beginContact(contact: Contact) {
@@ -32,6 +33,14 @@ class MergeContactListener(
             onBumperHit(b.body.position.x, b.body.position.y)
         } else if (fb.userData == Constants.BUMPER && a is ShapeEntity) {
             onBumperHit(a.body.position.x, a.body.position.y)
+        }
+        // Portal entry: a shape touching a portal sensor teleports to its pair.
+        val pa = fa.userData
+        val pb = fb.userData
+        if (pa is PortalMark && b is ShapeEntity) {
+            onPortalEnter(b, pa.index)
+        } else if (pb is PortalMark && a is ShapeEntity) {
+            onPortalEnter(a, pb.index)
         }
     }
 

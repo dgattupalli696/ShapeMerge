@@ -13,6 +13,9 @@ class ShapeEntity(val level: Int, val body: Body, val radius: Float) {
     var mergeGroup = 0
     var mergeGroupTimer = 0f
 
+    // Brief cooldown after teleporting so a shape doesn't instantly re-enter a portal.
+    var portalCooldown = 0f
+
     init {
         body.userData = this
     }
