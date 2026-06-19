@@ -57,15 +57,11 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     // Power-ups earned from combos, queued to load as the next ammo.
     private val pendingPowerUps = ArrayDeque<Ammo>()
 
-    // Pinball bumpers (bouncy static obstacles in the playground).
+    // Pinball bumpers: a random hazard. 1-3 bumpers appear at random levels and
+    // last a random 1-5 levels before vanishing.
     private val bumpers = ArrayList<Body>()
-    private var bumpersActive = false
+    private var bumperLevelsLeft = 0
     private val bumperColor = Color(0.95f, 0.45f, 0.85f, 1f)
-    private val bumperPositions = arrayOf(
-        Vector2(2.3f, 10.3f),
-        Vector2(6.7f, 10.3f),
-        Vector2(4.5f, 12.6f)
-    )
 
     // Transient floating effects: circle-pop rings + floating score/combo text.
     private class Pop(
@@ -181,30 +177,51 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         edge.dispose()
     }
 
-    private fun setBumpers(active: Boolean) {
-        if (active == bumpersActive) return
-        bumpersActive = active
-        if (active) {
-            val shape = CircleShape().apply { radius = Constants.BUMPER_RADIUS }
-            for (p in bumperPositions) {
-                val bodyDef = BodyDef().apply {
-                    type = BodyDef.BodyType.StaticBody
-                    position.set(p)
-                }
-                val b = world.createBody(bodyDef)
-                val fd = FixtureDef().apply {
-                    this.shape = shape
-                    restitution = Constants.BUMPER_RESTITUTION
-                    friction = 0.1f
-                }
-                b.createFixture(fd).userData = Constants.BUMPER
-                bumpers.add(b)
-            }
-            shape.dispose()
-        } else {
-            for (b in bumpers) world.destroyBody(b)
-            bumpers.clear()
+    /** Called on each level change: spawn or expire the random bumper hazard. */
+    private fun updateBumpersForLevel() {
+        if (bumperLevelsLeft > 0) {
+            bumperLevelsLeft--
+            if (bumperLevelsLeft == 0) clearBumpers()
+            return
         }
+        if (level >= Constants.BUMPER_MIN_LEVEL &&
+            MathUtils.random() < Constants.BUMPER_APPEAR_CHANCE
+        ) {
+            spawnBumpers(MathUtils.random(1, 3))
+            bumperLevelsLeft = MathUtils.random(1, 5)
+        }
+    }
+
+    /** Creates [count] bumpers at random, non-overlapping spots in the playground. */
+    private fun spawnBumpers(count: Int) {
+        clearBumpers()
+        val shape = CircleShape().apply { radius = Constants.BUMPER_RADIUS }
+        val placed = ArrayList<Vector2>()
+        var attempts = 0
+        while (placed.size < count && attempts++ < 60) {
+            val x = MathUtils.random(1.6f, Constants.WORLD_WIDTH - 1.6f)
+            val y = MathUtils.random(Constants.LAUNCH_ZONE_TOP + 3f, Constants.WORLD_HEIGHT - 2.5f)
+            if (placed.any { Vector2.dst(it.x, it.y, x, y) < Constants.BUMPER_RADIUS * 4f }) continue
+            placed.add(Vector2(x, y))
+            val bodyDef = BodyDef().apply {
+                type = BodyDef.BodyType.StaticBody
+                position.set(x, y)
+            }
+            val b = world.createBody(bodyDef)
+            val fd = FixtureDef().apply {
+                this.shape = shape
+                restitution = Constants.BUMPER_RESTITUTION
+                friction = 0.1f
+            }
+            b.createFixture(fd).userData = Constants.BUMPER
+            bumpers.add(b)
+        }
+        shape.dispose()
+    }
+
+    private fun clearBumpers() {
+        for (b in bumpers) world.destroyBody(b)
+        bumpers.clear()
     }
 
     private fun resetGame() {
@@ -232,7 +249,8 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         aiming = false
         state = State.PLAYING
         applyLevelGravity()
-        setBumpers(level >= Constants.BUMPER_START_LEVEL)
+        clearBumpers()
+        bumperLevelsLeft = 0
     }
 
     /**
@@ -498,7 +516,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             level++
             scoreTarget += Constants.BASE_TARGET + level * 250
             applyLevelGravity()
-            setBumpers(level >= Constants.BUMPER_START_LEVEL)
+            updateBumpersForLevel()
         }
         checkScoreMilestone(before, score)
     }
