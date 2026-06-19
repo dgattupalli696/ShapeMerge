@@ -62,8 +62,9 @@ object Constants {
     const val COMBO_WINDOW = 5.0f
 
     // Stray shapes that end up in the launch zone (failed/blocked launches) are
-    // given at least this upward speed so they always escape back into play.
-    const val LAUNCH_ESCAPE_SPEED = 3.5f
+    // given at least this upward speed (plus any downward-gravity magnitude) so
+    // they always escape back into play, even pushing a gravity pile aside.
+    const val LAUNCH_ESCAPE_SPEED = 4.5f
 
     // How long multi-ball shapes refuse to merge with their own volley-mates,
     // giving them time to spread out before behaving like normal shapes.

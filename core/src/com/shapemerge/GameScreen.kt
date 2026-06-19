@@ -23,6 +23,7 @@ import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.viewport.FitViewport
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -76,6 +77,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
     // Gravity-flip levels: world gravity eases from current toward target.
     private var gravityMode = Gravity.ZERO
+    private var gravityBand = 0
     private val currentGravity = Vector2()
     private val targetGravity = Vector2()
     private var gravityAnnounceTimer = 0f
@@ -173,6 +175,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         comboTimer = 0f
         pendingPowerUps.clear()
         gravityMode = Gravity.ZERO
+        gravityBand = 0
         currentGravity.set(0f, 0f)
         targetGravity.set(0f, 0f)
         gravityAnnounceTimer = 0f
@@ -455,10 +458,16 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         checkScoreMilestone(before, score)
     }
 
-    /** Sets the world gravity for the current level, with a telegraph. */
+    /**
+     * Updates world gravity for the current level. Gravity is zero for levels 1-4,
+     * then a RANDOM non-zero direction is chosen for each 5-level band and kept for
+     * the whole band. Telegraphs the change.
+     */
     private fun applyLevelGravity() {
-        val g = Gravity.forLevel(level)
-        if (g == gravityMode) return
+        val band = Gravity.bandForLevel(level)
+        if (band == gravityBand) return
+        gravityBand = band
+        val g = if (band == 0) Gravity.ZERO else Gravity.randomNonZero(gravityMode)
         gravityMode = g
         targetGravity.set(g.dx * Constants.GRAVITY_STRENGTH, g.dy * Constants.GRAVITY_STRENGTH)
         if (g != Gravity.ZERO) {
@@ -556,13 +565,20 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
      * - Expires multi-ball merge groups so volley-mates can merge once spread out.
      */
     private fun updateShapes(delta: Float) {
+        // Push harder out of the launch zone when gravity is pulling shapes down.
+        val downGrav = max(0f, -currentGravity.y)
+        val escape = Constants.LAUNCH_ESCAPE_SPEED + downGrav
         for (s in shapes) {
             val pos = s.body.position
-            if (pos.y < Constants.LAUNCH_ZONE_TOP - s.radius) {
+            val inLaunchZone = pos.y < Constants.LAUNCH_ZONE_TOP - s.radius
+            // While still in the launch zone, ignore gravity so it can't drag the
+            // shape back down, and force it upward so it always reaches the board.
+            val desiredScale = if (inLaunchZone) 0f else 1f
+            if (s.body.gravityScale != desiredScale) s.body.gravityScale = desiredScale
+            if (inLaunchZone) {
                 val v = s.body.linearVelocity
-                if (v.y < Constants.LAUNCH_ESCAPE_SPEED) {
-                    s.body.setLinearVelocity(v.x, Constants.LAUNCH_ESCAPE_SPEED)
-                }
+                if (v.y < escape) s.body.setLinearVelocity(v.x, escape)
+                s.body.isAwake = true
             }
             if (s.mergeGroup != 0) {
                 s.mergeGroupTimer -= delta
