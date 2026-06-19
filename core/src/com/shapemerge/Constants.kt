@@ -33,6 +33,12 @@ object Constants {
     // Marker for the one-way divider fixture (shots pass up through it).
     const val DIVIDER = "divider"
 
+    // Pinball bumpers: bouncy static obstacles that appear from this level on.
+    const val BUMPER = "bumper"
+    const val BUMPER_START_LEVEL = 2
+    const val BUMPER_RADIUS = 0.62f
+    const val BUMPER_RESTITUTION = 1.25f
+
     // Ladder runs triangle (3) to decagon (10). Size grows per step but is capped
     // at MAX_RADIUS, which octagon (level 8) reaches exactly: 0.55 + 5*0.08 = 0.95.
     // So octagon, nonagon and decagon share the same (max) size, just more sides.

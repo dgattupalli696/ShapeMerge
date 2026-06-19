@@ -11,18 +11,27 @@ import com.badlogic.gdx.physics.box2d.Manifold
  * queues the pair via [onSameLevelContact].
  */
 class MergeContactListener(
-    private val onSameLevelContact: (ShapeEntity, ShapeEntity) -> Unit
+    private val onSameLevelContact: (ShapeEntity, ShapeEntity) -> Unit,
+    private val onBumperHit: (Float, Float) -> Unit
 ) : ContactListener {
 
     override fun beginContact(contact: Contact) {
-        val a = contact.fixtureA.body.userData
-        val b = contact.fixtureB.body.userData
+        val fa = contact.fixtureA
+        val fb = contact.fixtureB
+        val a = fa.body.userData
+        val b = fb.body.userData
         if (a is ShapeEntity && b is ShapeEntity &&
             a !== b && !a.removed && !b.removed &&
             a.level == b.level &&
             !(a.mergeGroup != 0 && a.mergeGroup == b.mergeGroup)
         ) {
             onSameLevelContact(a, b)
+        }
+        // Bumper hit: a shape touching a bumper fixture triggers juice.
+        if (fa.userData == Constants.BUMPER && b is ShapeEntity) {
+            onBumperHit(b.body.position.x, b.body.position.y)
+        } else if (fb.userData == Constants.BUMPER && a is ShapeEntity) {
+            onBumperHit(a.body.position.x, a.body.position.y)
         }
     }
 

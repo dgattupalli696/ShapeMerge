@@ -57,6 +57,16 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
     // Power-ups earned from combos, queued to load as the next ammo.
     private val pendingPowerUps = ArrayDeque<Ammo>()
 
+    // Pinball bumpers (bouncy static obstacles in the playground).
+    private val bumpers = ArrayList<Body>()
+    private var bumpersActive = false
+    private val bumperColor = Color(0.95f, 0.45f, 0.85f, 1f)
+    private val bumperPositions = arrayOf(
+        Vector2(2.3f, 10.3f),
+        Vector2(6.7f, 10.3f),
+        Vector2(4.5f, 12.6f)
+    )
+
     // Transient floating effects: circle-pop rings + floating score/combo text.
     private class Pop(
         val x: Float,
@@ -135,8 +145,17 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
     private fun buildWorld() {
         world = World(Vector2(0f, 0f), true)
-        world.setContactListener(MergeContactListener { a, b -> mergeQueue.add(a to b) })
+        world.setContactListener(MergeContactListener(
+            { a, b -> mergeQueue.add(a to b) },
+            { x, y -> onBumperHit(x, y) }
+        ))
         createWalls()
+    }
+
+    private fun onBumperHit(x: Float, y: Float) {
+        particles.burst(x, y, 8, bumperColor, 5f, 0.12f)
+        sounds.playMerge(1.6f)
+        fx.shake(0.04f, 0.08f)
     }
 
     private fun createWalls() {
@@ -160,6 +179,32 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         edge.set(0f, Constants.LAUNCH_ZONE_TOP, w, Constants.LAUNCH_ZONE_TOP)
         body.createFixture(fixtureDef).userData = Constants.DIVIDER
         edge.dispose()
+    }
+
+    private fun setBumpers(active: Boolean) {
+        if (active == bumpersActive) return
+        bumpersActive = active
+        if (active) {
+            val shape = CircleShape().apply { radius = Constants.BUMPER_RADIUS }
+            for (p in bumperPositions) {
+                val bodyDef = BodyDef().apply {
+                    type = BodyDef.BodyType.StaticBody
+                    position.set(p)
+                }
+                val b = world.createBody(bodyDef)
+                val fd = FixtureDef().apply {
+                    this.shape = shape
+                    restitution = Constants.BUMPER_RESTITUTION
+                    friction = 0.1f
+                }
+                b.createFixture(fd).userData = Constants.BUMPER
+                bumpers.add(b)
+            }
+            shape.dispose()
+        } else {
+            for (b in bumpers) world.destroyBody(b)
+            bumpers.clear()
+        }
     }
 
     private fun resetGame() {
@@ -187,6 +232,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         aiming = false
         state = State.PLAYING
         applyLevelGravity()
+        setBumpers(level >= Constants.BUMPER_START_LEVEL)
     }
 
     /**
@@ -452,6 +498,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
             level++
             scoreTarget += Constants.BASE_TARGET + level * 250
             applyLevelGravity()
+            setBumpers(level >= Constants.BUMPER_START_LEVEL)
         }
         checkScoreMilestone(before, score)
     }
@@ -706,6 +753,7 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
 
         drawBoardBackground()
         drawGravityIndicator()
+        drawBumpers()
         drawShapes()
         drawProjectiles()
         drawParticles()
@@ -744,6 +792,23 @@ class GameScreen(private val game: ShapeMergeGame) : Screen {
         shapeRenderer.triangle(tipX + dx * 0.35f, tipY + dy * 0.35f, tipX + px * hh, tipY + py * hh, tipX - px * hh, tipY - py * hh)
         shapeRenderer.end()
         Gdx.gl.glDisable(GL20.GL_BLEND)
+    }
+
+    /** Draws the pinball bumpers (pulsing bouncy obstacles). */
+    private fun drawBumpers() {
+        if (bumpers.isEmpty()) return
+        val pulse = 0.85f + 0.15f * MathUtils.sin(previewSpin * 4f)
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
+        for (b in bumpers) {
+            val p = b.position
+            shapeRenderer.color = Color(0.45f, 0.2f, 0.42f, 1f)
+            shapeRenderer.circle(p.x, p.y, Constants.BUMPER_RADIUS * 1.15f, 28)
+            shapeRenderer.color = bumperColor
+            shapeRenderer.circle(p.x, p.y, Constants.BUMPER_RADIUS * pulse, 28)
+            shapeRenderer.color = Color(1f, 0.85f, 0.95f, 1f)
+            shapeRenderer.circle(p.x, p.y, Constants.BUMPER_RADIUS * 0.35f, 16)
+        }
+        shapeRenderer.end()
     }
 
     private fun drawProjectiles() {
